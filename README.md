@@ -19,16 +19,23 @@ A super-fast, intelligent downloader for RedGifs content with automatic rate lim
 
 ## Installation
 
-1. Ensure you have Python 3.7 or newer installed
-2. Install required dependencies:
+1. Run the installer:
    ```
-   pip install httpx
+   python install.py
    ```
-3. Optional but recommended: Install Rich for better UI
-   ```
-   pip install rich
-   ```
-4. Download the script: `redgifs_dl.py`
+   - You will be prompted to use a virtual environment (recommended).
+   - Dependencies will be installed automatically.
+   - The latest version will be downloaded from GitHub.
+
+2. To activate the venv (if chosen):
+   - **Windows:**
+     ```
+     venv\Scripts\activate
+     ```
+   - **Linux/Mac:**
+     ```
+     source venv/bin/activate
+     ```
 
 ## Quick Start
 
@@ -59,6 +66,7 @@ Options:
   -c, --max-concurrency N     Maximum number of concurrent downloads (default: auto)
   -t, --timeout SECONDS       Download timeout in seconds (default: 60)
   -r, --retries COUNT         Number of retry attempts for failed downloads (default: 5)
+  --quality [hd|sd]           Download quality: hd or sd (default: hd)
   --dry-run                   Don't download files, just show what would be downloaded
   --skip-history              Download files even if they are in the history
   --verbose                   Enable verbose logging
