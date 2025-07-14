@@ -84,7 +84,7 @@ def main():
 
     print("\nInstallation complete!")
     print("To run the downloader, use:")
-    print("  python rgs.py")
+    print("  python redgifs_dl.py")
     print("Or, once available:")
     print("  python gui.py")
 
