@@ -1123,6 +1123,28 @@ class Downloader:
         finally:
             await session.aclose()
 
+# --- Venv auto-relaunch logic ---
+def in_venv():
+    return (
+        hasattr(sys, 'real_prefix') or
+        (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
+    )
+
+def relaunch_in_venv():
+    venv_dir = os.path.join(os.getcwd(), 'venv')
+    if os.name == 'nt':
+        python_path = os.path.join(venv_dir, 'Scripts', 'python.exe')
+    else:
+        python_path = os.path.join(venv_dir, 'bin', 'python')
+    if os.path.exists(python_path):
+        print(f"Relaunching in venv: {python_path}")
+        os.execv(python_path, [python_path] + sys.argv)
+
+if not in_venv():
+    venv_dir = os.path.join(os.getcwd(), 'venv')
+    if os.path.isdir(venv_dir):
+        relaunch_in_venv()
+
 async def main(args):
     """Main entry point"""
     # Initialize components
@@ -1143,13 +1165,13 @@ async def main(args):
         console.print(f"[bold cyan]RedGifs Downloader v{__version__}[/bold cyan]")
         console.print("[yellow]Super-fast, concurrent downloader for RedGifs content[/yellow]")
         console.print(f"[dim]Running on Python {platform.python_version()} - {platform.system()} {platform.release()}[/dim]")
-        console.print("[dim]Created by SleepyYui on 2025-03-23[/dim]")
+        console.print("[dim]Created by privacytop on 2025-03-23[/dim]")
         console.print("")
     else:
         print(f"RedGifs Downloader v{__version__}")
         print("Super-fast, concurrent downloader for RedGifs content")
         print(f"Running on Python {platform.python_version()} - {platform.system()} {platform.release()}")
-        print("Created by SleepyYui on 2025-03-23")
+        print("Created by privacytop on 2025-03-23")
         print("")
     
     # Initialize database
