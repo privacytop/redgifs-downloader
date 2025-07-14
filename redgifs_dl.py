@@ -75,6 +75,9 @@ class Config:
     rate_limit_max_backoff: float = 60.0  # Maximum backoff in seconds
     rate_limit_min_backoff: float = 0.2   # Minimum backoff in seconds
     
+    # Quality setting
+    quality: str = "hd"  # "hd" or "sd"
+    
     def __post_init__(self):
         if self.search_orders is None:
             self.search_orders = ["top", "trending", "recent", "best", "latest"]
@@ -422,7 +425,7 @@ class DatabaseManager:
         self.conn.commit()
         
     def clear_failed_downloads(self, username: str):
-        """Clear failed downloads for retry"""
+        """Clear failed downloads to retry"""
         self.cursor.execute("DELETE FROM failed_downloads WHERE username = ?", (username,))
         self.conn.commit()
 
@@ -894,8 +897,7 @@ class Downloader:
                 for i, gif in enumerate(gifs):
                     rank = base_rank + i + 1
                     links = gif.get("urls", {})
-                    url = links.get("hd") or links.get("sd")
-                    
+                    url = links.get(self.config.quality) or links.get("hd") or links.get("sd")
                     if url and url not in seen_urls:
                         seen_urls.add(url)
                         all_gifs.append((url, rank, search_order))
@@ -918,7 +920,7 @@ class Downloader:
                         for j, gif in enumerate(page_gifs):
                             rank = base_rank + j + 1
                             links = gif.get("urls", {})
-                            url = links.get("hd") or links.get("sd")
+                            url = links.get(self.config.quality) or links.get("hd") or links.get("sd")
                             
                             if url and url not in seen_urls:
                                 seen_urls.add(url)
@@ -1121,7 +1123,6 @@ class Downloader:
         finally:
             await session.aclose()
 
-
 async def main(args):
     """Main entry point"""
     # Initialize components
@@ -1265,6 +1266,7 @@ if __name__ == "__main__":
     parser.add_argument('--skip-history', action='store_true', help='Download files even if they are in the history')
     parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
     parser.add_argument('--version', action='version', version=f'RedGifs Downloader v{__version__}')
+    parser.add_argument("--quality", choices=["hd", "sd"], default="hd", help="Download quality: hd or sd (default: hd)")
     
     args = parser.parse_args()
     
