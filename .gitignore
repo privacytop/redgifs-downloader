@@ -1,0 +1,7 @@
+**/build
+**/node_modules
+**/wailsjs
+*.zip
+*.sha256
+*.exe
+*.db

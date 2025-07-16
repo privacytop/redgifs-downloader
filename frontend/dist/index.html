@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RedGifs Downloader</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#eff6ff',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .thumbnail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .collection-card {
+            transition: all 0.3s ease;
+        }
+        
+        .collection-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        .progress-bar {
+            transition: width 0.3s ease;
+        }
+        
+        .notification {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                position: fixed;
+                top: 0;
+                left: -100%;
+                height: 100vh;
+                z-index: 1000;
+                transition: left var(--transition-normal);
+            }
+
+            .sidebar.open {
+                left: 0;
+            }
+
+            .main-content {
+                padding: var(--spacing-md);
+            }
+
+            .grid-cols-auto {
+                grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            }
+        }
+
+        /* Loading States */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid var(--border-color);
+            border-radius: 50%;
+            border-top-color: var(--accent-primary);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Notifications */
+        .notification {
+            position: fixed;
+            top: var(--spacing-lg);
+            right: var(--spacing-lg);
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-md);
+            box-shadow: 0 8px 24px var(--shadow-heavy);
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            background-color: var(--bg-tertiary);
+            border-radius: 13px;
+            cursor: pointer;
+            transition: background-color var(--transition-normal);
+        }
+
+        .theme-toggle::before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 22px;
+            height: 22px;
+            background-color: white;
+            border-radius: 50%;
+            transition: transform var(--transition-normal);
+        }
+
+        [data-theme="dark"] .theme-toggle::before {
+            transform: translateX(24px);
+            background-color: var(--accent-primary);
+        }
+
+        /* Content specific styles */
+        .content-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .content-thumbnail {
+            width: 100%;
+            height: 200px;
+            object-fit: cover;
+            border-radius: var(--radius-md);
+        }
+
+        .content-placeholder {
+            width: 100%;
+            height: 200px;
+            background-color: var(--bg-tertiary);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-lg);
+        }
+
+        .stat-card {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: var(--font-size-2xl);
+            font-weight: 700;
+            color: var(--accent-primary);
+        }
+
+        .stat-label {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+            margin-top: var(--spacing-xs);
+        }
+
+        /* Page transitions */
+        .page {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all var(--transition-normal);
+        }
+
+        .page.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Empty states */
+        .empty-state {
+            text-align: center;
+            padding: var(--spacing-2xl);
+            color: var(--text-secondary);
+        }
+
+        .empty-icon {
+            width: 64px;
+            height: 64px;
+            margin: 0 auto var(--spacing-lg);
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body data-theme="light">
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <!-- Logo and Title -->
+            <div class="flex items-center mb-xl">
+                <div class="w-8 h-8 bg-accent-primary rounded-lg flex items-center justify-center mr-sm">
+                    <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold text-primary">RedGifs</h1>
+                    <p class="text-xs text-secondary">Downloader</p>
+                </div>
+            </div>
+
+            <!-- Theme Toggle -->
+            <div class="flex items-center justify-between mb-lg">
+                <span class="text-sm text-secondary">Dark Mode</span>
+                <div class="theme-toggle" onclick="app.toggleTheme()"></div>
+            </div>
+
+            <!-- Navigation Menu -->
+            <div class="nav-menu">
+                <a href="#" class="nav-item active" onclick="app.showPage('dashboard')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10.707 2.293a1 1 0 00-1.414 0l-9 9a1 1 0 001.414 1.414L2 12.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-4.586l.293.293a1 1 0 001.414-1.414l-9-9z"/>
+                    </svg>
+                    Dashboard
+                </a>
+
+                <a href="#" class="nav-item" onclick="app.showPage('browse')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                    </svg>
+                    Browse Users
+                </a>
+
+                <a href="#" class="nav-item" onclick="app.showPage('collections')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/>
+                    </svg>
+                    Collections
+                </a>
+
+                <a href="#" class="nav-item" onclick="app.showPage('likes')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+                    </svg>
+                    Liked Content
+                </a>
+
+                <a href="#" class="nav-item" onclick="app.showPage('downloads')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                    </svg>
+                    Downloads
+                </a>
+
+                <a href="#" class="nav-item" onclick="app.showPage('settings')">
+                    <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+                    </svg>
+                    Settings
+                </a>
+            </div>
+
+            <!-- Authentication Status -->
+            <div class="mt-xl pt-lg" style="border-top: 1px solid var(--border-color);">
+                <div id="auth-status" class="flex items-center gap-sm">
+                    <div class="w-2 h-2 bg-red-500 rounded-full"></div>
+                    <span class="text-sm text-secondary">Not authenticated</span>
+                </div>
+                <button id="auth-button" class="btn btn-primary w-full mt-sm" onclick="app.login()">
+                    Login
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Dashboard Page -->
+            <div id="dashboard-page" class="page active">
+                <div class="flex items-center justify-between mb-xl">
+                    <div>
+                        <h2 class="text-3xl font-bold text-primary">Dashboard</h2>
+                        <p class="text-secondary mt-xs">Welcome to RedGifs Downloader</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.refreshDashboard()">
+                        <svg class="w-4 h-4 mr-sm" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <!-- Statistics Cards -->
+                <div class="stats-grid mb-xl">
+                    <div class="card stat-card">
+                        <div class="stat-value" id="total-downloads">0</div>
+                        <div class="stat-label">Total Downloads</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-value" id="active-tasks">0</div>
+                        <div class="stat-label">Active Tasks</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-value" id="total-size">0 GB</div>
+                        <div class="stat-label">Total Size</div>
+                    </div>
+                    <div class="card stat-card">
+                        <div class="stat-value" id="success-rate">0%</div>
+                        <div class="stat-label">Success Rate</div>
+                    </div>
+                </div>
+
+                <!-- Recent Activity -->
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-primary mb-lg">Recent Activity</h3>
+                    <div id="recent-activity">
+                        <div class="empty-state">
+                            <svg class="empty-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                            </svg>
+                            <p>No recent activity</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Browse Users Page -->
+            <div id="browse-page" class="page hidden">
+                <div class="flex items-center justify-between mb-xl">
+                    <div>
+                        <h2 class="text-3xl font-bold text-primary">Browse Users</h2>
+                        <p class="text-secondary mt-xs">Search and download from RedGifs users</p>
+                    </div>
+                </div>
+
+                <!-- Search Form -->
+                <div class="card mb-xl">
+                    <form id="search-form" class="flex gap-md">
+                        <div class="flex-1">
+                            <input type="text" id="username-input" class="input" placeholder="Enter username..." required>
+                        </div>
+                        <div>
+                            <select id="search-order" class="input select">
+                                <option value="trending">Trending</option>
+                                <option value="top">Top</option>
+                                <option value="recent">Recent</option>
+                                <option value="best">Best</option>
+                                <option value="new">New</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <svg class="w-4 h-4 mr-sm" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                            </svg>
+                            Search
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Search Results -->
+                <div id="search-results" class="grid grid-cols-auto">
+                    <div class="empty-state">
+                        <svg class="empty-icon" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clip-rule="evenodd"/>
+                        </svg>
+                        <p>Enter a username to search for content</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Collections Page -->
+            <div id="collections-page" class="page hidden">
+                <div class="flex items-center justify-between mb-xl">
+                    <div>
+                        <h2 class="text-3xl font-bold text-primary">Collections</h2>
+                        <p class="text-secondary mt-xs">Browse and download your collections</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.loadCollections()">
+                        <svg class="w-4 h-4 mr-sm" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="collections-grid" class="grid grid-cols-auto">
+                    <div class="empty-state">
+                        <svg class="empty-icon" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z"/>
+                        </svg>
+                        <p>No collections found</p>
+                        <p class="text-xs mt-sm">Make sure you're logged in to view your collections</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Likes Page -->
+            <div id="likes-page" class="page hidden">
+                <div class="flex items-center justify-between mb-xl">
+                    <div>
+                        <h2 class="text-3xl font-bold text-primary">Liked Content</h2>
+                        <p class="text-secondary mt-xs">Browse and download your liked content</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.loadLikes()">
+                        <svg class="w-4 h-4 mr-sm" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="likes-grid" class="grid grid-cols-auto">
+                    <div class="empty-state">
+                        <svg class="empty-icon" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+                        </svg>
+                        <p>No liked content found</p>
+                        <p class="text-xs mt-sm">Make sure you're logged in to view your likes</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Downloads Page -->
+            <div id="downloads-page" class="page hidden">
+                <div class="flex items-center justify-between mb-xl">
+                    <div>
+                        <h2 class="text-3xl font-bold text-primary">Downloads</h2>
+                        <p class="text-secondary mt-xs">Manage your download tasks and history</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.loadDownloads()">
+                        <svg class="w-4 h-4 mr-sm" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <!-- Active Downloads -->
+                <div class="card mb-lg">
+                    <h3 class="text-xl font-semibold text-primary mb-lg">Active Downloads</h3>
+                    <div id="active-downloads">
+                        <div class="empty-state">
+                            <svg class="empty-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                            </svg>
+                            <p>No active downloads</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Download History -->
+                <div class="card">
+                    <h3 class="text-xl font-semibold text-primary mb-lg">Download History</h3>
+                    <div id="download-history">
+                        <div class="empty-state">
+                            <svg class="empty-icon" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                            </svg>
+                            <p>No download history</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div id="settings-page" class="page hidden">
+                <div class="flex items-center justify-between mb-xl">
+                    <div>
+                        <h2 class="text-3xl font-bold text-primary">Settings</h2>
+                        <p class="text-secondary mt-xs">Configure your download preferences</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-lg" style="max-width: 600px;">
+                    <!-- Download Settings -->
+                    <div class="card">
+                        <h3 class="text-xl font-semibold text-primary mb-lg">Download Settings</h3>
+                        <div class="flex flex-col gap-md">
+                            <div>
+                                <label class="block text-sm font-medium text-primary mb-sm">Download Path</label>
+                                <input type="text" id="download-path" class="input" placeholder="./downloads">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-primary mb-sm">Preferred Quality</label>
+                                <select id="preferred-quality" class="input select">
+                                    <option value="hd">HD (High Definition)</option>
+                                    <option value="sd">SD (Standard Definition)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-primary mb-sm">Max Concurrent Downloads</label>
+                                <input type="number" id="max-concurrent" min="1" max="20" class="input" placeholder="5">
+                            </div>
+
+                            <div class="flex items-center gap-sm">
+                                <input type="checkbox" id="create-user-folders" class="w-4 h-4">
+                                <label for="create-user-folders" class="text-sm text-primary">Create user folders</label>
+                            </div>
+
+                            <div class="flex items-center gap-sm">
+                                <input type="checkbox" id="overwrite-existing" class="w-4 h-4">
+                                <label for="overwrite-existing" class="text-sm text-primary">Overwrite existing files</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Application Settings -->
+                    <div class="card">
+                        <h3 class="text-xl font-semibold text-primary mb-lg">Application Settings</h3>
+                        <div class="flex flex-col gap-md">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <label class="block text-sm font-medium text-primary">Dark Mode</label>
+                                    <p class="text-xs text-secondary">Toggle between light and dark themes</p>
+                                </div>
+                                <div class="theme-toggle" onclick="app.toggleTheme()"></div>
+                            </div>
+
+                            <div class="flex items-center gap-sm">
+                                <input type="checkbox" id="show-notifications" class="w-4 h-4" checked>
+                                <label for="show-notifications" class="text-sm text-primary">Show desktop notifications</label>
+                            </div>
+
+                            <div class="flex items-center gap-sm">
+                                <input type="checkbox" id="auto-refresh" class="w-4 h-4" checked>
+                                <label for="auto-refresh" class="text-sm text-primary">Auto-refresh content</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save Button -->
+                    <button class="btn btn-primary" onclick="app.saveSettings()">
+                        <svg class="w-4 h-4 mr-sm" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M7.707 10.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V6a1 1 0 10-2 0v5.586l-1.293-1.293z"/>
+                            <path d="M5 4a2 2 0 012-2h6a2 2 0 012 2v1a1 1 0 11-2 0V4H7v1a1 1 0 11-2 0V4z"/>
+                        </svg>
+                        Save Settings
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="card flex items-center gap-md">
+                <div class="loading"></div>
+                <span class="text-primary">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Notifications Container -->
+        <div id="notifications" class="fixed top-4 right-4 z-50 flex flex-col gap-sm"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <div id="app" class="min-h-screen">
+        <!-- Navigation -->
+        <nav class="bg-white dark:bg-gray-800 shadow-lg border-b border-gray-200 dark:border-gray-700">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0">
+                            <h1 class="text-xl font-bold text-primary-600 dark:text-primary-400">
+                                RedGifs Downloader
+                            </h1>
+                        </div>
+                        <div class="hidden md:ml-6 md:flex md:space-x-8">
+                            <a href="#" class="nav-link" data-page="dashboard">Dashboard</a>
+                            <a href="#" class="nav-link" data-page="browse">Browse</a>
+                            <a href="#" class="nav-link" data-page="collections">Collections</a>
+                            <a href="#" class="nav-link" data-page="likes">Likes</a>
+                            <a href="#" class="nav-link" data-page="downloads">Downloads</a>
+                            <a href="#" class="nav-link" data-page="settings">Settings</a>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button id="theme-toggle" class="p-2 rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+                            </svg>
+                        </button>
+                        <div id="auth-status" class="flex items-center space-x-2">
+                            <button id="login-btn" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md text-sm font-medium">
+                                Login
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+            <!-- Dashboard Page -->
+            <div id="dashboard-page" class="page">
+                <div class="mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h2>
+                    <p class="text-gray-600 dark:text-gray-400">Overview of your downloads and activity</p>
+                </div>
+                
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-primary-500 rounded-md flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Downloads</p>
+                                <p id="total-downloads" class="text-2xl font-semibold text-gray-900 dark:text-gray-100">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Collections</p>
+                                <p id="total-collections" class="text-2xl font-semibold text-gray-900 dark:text-gray-100">0</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-red-500 rounded-md flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Size</p>
+                                <p id="total-size" class="text-2xl font-semibold text-gray-900 dark:text-gray-100">0 MB</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0">
+                                <div class="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
+                                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Users</p>
+                                <p id="total-users" class="text-2xl font-semibold text-gray-900 dark:text-gray-100">0</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Recent Downloads -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Recent Downloads</h3>
+                    </div>
+                    <div id="recent-downloads" class="p-6">
+                        <div class="text-center text-gray-500 dark:text-gray-400">
+                            <p>No recent downloads</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Browse Page -->
+            <div id="browse-page" class="page hidden">
+                <div class="mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Browse Users</h2>
+                    <p class="text-gray-600 dark:text-gray-400">Search and browse RedGifs users</p>
+                </div>
+                
+                <!-- Search -->
+                <div class="mb-6">
+                    <div class="flex space-x-4">
+                        <div class="flex-1">
+                            <input type="text" id="user-search" placeholder="Enter username or profile URL..." 
+                                   class="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        </div>
+                        <button id="search-btn" class="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md font-medium">
+                            Search
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Search Results -->
+                <div id="search-results" class="space-y-4">
+                    <!-- Results will be populated here -->
+                </div>
+            </div>
+
+            <!-- Collections Page -->
+            <div id="collections-page" class="page hidden">
+                <div class="mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Collections</h2>
+                    <p class="text-gray-600 dark:text-gray-400">Browse and download your collections</p>
+                </div>
+
+                <div id="collections-grid" class="thumbnail-grid">
+                    <!-- Collections will be populated here -->
+                </div>
+            </div>
+
+            <!-- Likes Page -->
+            <div id="likes-page" class="page hidden">
+                <div class="mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Liked Content</h2>
+                    <p class="text-gray-600 dark:text-gray-400">Browse and download your liked content</p>
+                </div>
+
+                <div id="likes-grid" class="thumbnail-grid">
+                    <!-- Liked content will be populated here -->
+                </div>
+            </div>
+
+            <!-- Downloads Page -->
+            <div id="downloads-page" class="page hidden">
+                <div class="mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Downloads</h2>
+                    <p class="text-gray-600 dark:text-gray-400">Manage your download tasks and history</p>
+                </div>
+
+                <!-- Active Downloads -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow mb-6">
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Active Downloads</h3>
+                    </div>
+                    <div id="active-downloads" class="p-6">
+                        <div class="text-center text-gray-500 dark:text-gray-400">
+                            <p>No active downloads</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Download History -->
+                <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                        <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Download History</h3>
+                    </div>
+                    <div id="download-history" class="p-6">
+                        <div class="text-center text-gray-500 dark:text-gray-400">
+                            <p>No download history</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div id="settings-page" class="page hidden">
+                <div class="mb-8">
+                    <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h2>
+                    <p class="text-gray-600 dark:text-gray-400">Configure your download preferences</p>
+                </div>
+
+                <div class="max-w-2xl">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow">
+                        <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                            <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">Download Settings</h3>
+                        </div>
+                        <div class="p-6 space-y-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Download Path
+                                </label>
+                                <input type="text" id="download-path"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Preferred Quality
+                                </label>
+                                <select id="preferred-quality"
+                                        class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                                    <option value="hd">HD (High Definition)</option>
+                                    <option value="sd">SD (Standard Definition)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    Max Concurrent Downloads
+                                </label>
+                                <input type="number" id="max-concurrent" min="1" max="20"
+                                       class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                            </div>
+
+                            <div class="flex items-center">
+                                <input type="checkbox" id="create-user-folders"
+                                       class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                                <label for="create-user-folders" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                                    Create user folders
+                                </label>
+                            </div>
+
+                            <div class="flex items-center">
+                                <input type="checkbox" id="overwrite-existing"
+                                       class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                                <label for="overwrite-existing" class="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                                    Overwrite existing files
+                                </label>
+                            </div>
+
+                            <div class="pt-4">
+                                <button onclick="app.saveSettings()"
+                                        class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md font-medium">
+                                    Save Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notifications" class="fixed top-4 right-4 space-y-2 z-50">
+        <!-- Notifications will be added here -->
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <div class="flex items-center space-x-3">
+                <div class="spinner w-6 h-6 border-2 border-primary-600 border-t-transparent rounded-full"></div>
+                <span class="text-gray-900 dark:text-gray-100">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

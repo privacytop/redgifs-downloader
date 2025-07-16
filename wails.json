@@ -1,0 +1,61 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "redgifs-downloader",
+  "outputfilename": "RedGifs Downloader",
+  "frontend": {
+    "dir": "./frontend",
+    "install": "npm install",
+    "build": "npm run build",
+    "dev": "npm run dev",
+    "package": {
+      "manager": "npm"
+    }
+  },
+  "author": {
+    "name": "RedGifs Downloader Team",
+    "email": "support@redgifs-downloader.com"
+  },
+  "info": {
+    "companyName": "RedGifs Downloader",
+    "productName": "RedGifs Downloader",
+    "productVersion": "3.0.0",
+    "copyright": "Copyright © 2024 RedGifs Downloader Team. All rights reserved.",
+    "comments": "A beautiful and powerful RedGifs content downloader with collections and likes support"
+  },
+  "nsisType": "multiple",
+  "obfuscated": false,
+  "garbleargs": "",
+  "buildType": "production",
+  "webview2": "download",
+  "windowsArm64": false,
+  "debianDepends": [
+    "libgtk-3-0",
+    "libwebkit2gtk-4.0-37"
+  ],
+  "macOSBundleId": "com.redgifs-downloader.app",
+  "build": {
+    "compiler": "go",
+    "ldflags": [
+      "-s",
+      "-w",
+      "-X main.version=3.0.0",
+      "-X main.buildTime={{.BuildTime}}",
+      "-X main.gitCommit={{.GitCommit}}"
+    ],
+    "tags": [
+      "production"
+    ],
+    "race": false,
+    "upx": false,
+    "upxFlags": ""
+  },
+  "nsis": {
+    "languages": [
+      "English",
+      "SimpChinese"
+    ],
+    "include": [
+      "build/windows"
+    ]
+  }
+}

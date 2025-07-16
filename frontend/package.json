@@ -1,0 +1,51 @@
+{
+  "name": "redgifs-downloader-frontend",
+  "version": "3.0.0",
+  "description": "Frontend for RedGifs Downloader - A modern, beautiful GUI for downloading RedGifs content",
+  "main": "dist/index.html",
+  "scripts": {
+    "dev": "live-server dist --port=3000 --host=localhost --open=/",
+    "build": "echo 'Frontend is already built in dist/'",
+    "format": "prettier --write \"dist/**/*.{html,css,js}\"",
+    "lint": "eslint dist/**/*.js",
+    "serve": "live-server dist --port=3000",
+    "watch": "chokidar \"dist/**/*\" -c \"echo 'File changed: {path}'\"",
+    "validate": "html-validate dist/index.html"
+  },
+  "keywords": [
+    "redgifs",
+    "downloader",
+    "gui",
+    "wails",
+    "go",
+    "frontend",
+    "vanilla-js"
+  ],
+  "author": "privacytop",
+  "license": "MIT",
+  "devDependencies": {
+    "live-server": "^1.2.2",
+    "prettier": "^3.0.0",
+    "eslint": "^8.50.0",
+    "chokidar-cli": "^3.0.0",
+    "html-validate": "^8.0.0"
+  },
+  "dependencies": {},
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/privacytop/redgifs-downloader.git"
+  },
+  "bugs": {
+    "url": "https://github.com/privacytop/redgifs-downloader/issues"
+  },
+  "homepage": "https://github.com/privacytop/redgifs-downloader#readme"
+}
