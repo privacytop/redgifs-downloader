@@ -1,0 +1,165 @@
+# RedGifs Downloader Configuration Example
+# Copy this file to config.yaml and modify as needed
+
+# Application settings
+app:
+  name: "RedGifs Downloader"
+  version: "3.0.0"
+  environment: "production"  # production, development, testing
+  data_dir: "./data"         # Directory for application data
+  log_level: "info"          # debug, info, warn, error
+
+# API configuration
+api:
+  base_url: "https://api.redgifs.com/v2"
+  timeout: "30s"
+  retry_attempts: 3
+  retry_delay: "2s"
+  user_agent: "RedGifs-Downloader/3.0.0"
+  page_size: 100
+  max_pages: 50
+
+# Download settings
+download:
+  path: "./downloads"                    # Base download directory
+  max_concurrent: 10                     # Maximum concurrent downloads
+  min_concurrent: 3                      # Minimum concurrent downloads
+  timeout: "60s"                         # Download timeout per file
+  retry_attempts: 3                      # Retry attempts for failed downloads
+  retry_delay: "2s"                      # Delay between retries
+  preferred_quality: "hd"                # hd, sd
+  create_user_folders: true              # Create folders for each user
+  create_collection_folders: true        # Create folders for collections
+  overwrite_existing: false              # Overwrite existing files
+  generate_thumbnails: true              # Generate thumbnail images
+  thumbnail_size: 300                    # Thumbnail size in pixels
+  search_orders:                         # Available search orders
+    - "trending"
+    - "top"
+    - "recent"
+    - "best"
+    - "new"
+
+# Database configuration
+database:
+  path: "./redgifs.db"                   # SQLite database file path
+  max_connections: 10                    # Maximum database connections
+  conn_max_lifetime: "1h"                # Connection maximum lifetime
+  backup_interval: "24h"                 # Automatic backup interval
+  backup_retention: 7                    # Number of backups to keep
+
+# Authentication settings
+auth:
+  callback_port: 8080                    # OAuth callback port
+  callback_path: "/auth/callback"        # OAuth callback path
+  token_expiry: "1h"                     # Token expiry time
+  refresh_buffer: "5m"                   # Token refresh buffer time
+  secure_storage: true                   # Use secure token storage
+
+# User interface settings
+ui:
+  theme: "dark"                          # dark, light
+  show_notifications: true               # Show desktop notifications
+  auto_refresh: true                     # Auto-refresh content
+  refresh_interval: "30s"                # Auto-refresh interval
+  thumbnail_columns: 4                   # Number of thumbnail columns
+  show_progress: true                    # Show download progress
+
+# Rate limiting configuration
+rate_limit:
+  requests_per_second: 5.0               # Base requests per second
+  burst_size: 10                         # Burst capacity
+  adaptive_enabled: true                 # Enable adaptive rate limiting
+  backoff_multiplier: 2.0                # Exponential backoff multiplier
+  max_backoff_duration: "5m"             # Maximum backoff duration
+  
+  # Circuit breaker settings
+  circuit_breaker:
+    enabled: true                        # Enable circuit breaker
+    failure_threshold: 5                 # Failures before opening circuit
+    recovery_timeout: "30s"              # Time before attempting recovery
+    half_open_requests: 3                # Requests to test in half-open state
+
+# Logging configuration
+logging:
+  level: "info"                          # debug, info, warn, error
+  format: "text"                         # text, json
+  output: "stdout"                       # stdout, stderr, file
+  file_path: "./logs/app.log"            # Log file path (if output is file)
+  max_size: "100MB"                      # Maximum log file size
+  max_backups: 5                         # Number of log backups to keep
+  max_age: "30d"                         # Maximum age of log files
+  compress: true                         # Compress old log files
+
+# Performance tuning
+performance:
+  worker_pool_size: 10                   # Worker pool size for downloads
+  buffer_size: "64KB"                    # Buffer size for file operations
+  memory_limit: "512MB"                  # Memory usage limit
+  gc_percent: 100                        # Go garbage collection target
+
+# Security settings
+security:
+  enable_cors: false                     # Enable CORS for web interface
+  allowed_origins: []                    # Allowed CORS origins
+  csrf_protection: true                  # Enable CSRF protection
+  secure_cookies: true                   # Use secure cookies
+  session_timeout: "24h"                 # Session timeout
+
+# Feature flags
+features:
+  collections_enabled: true              # Enable collections feature
+  likes_enabled: true                    # Enable likes feature
+  thumbnails_enabled: true               # Enable thumbnail generation
+  statistics_enabled: true               # Enable statistics collection
+  health_checks_enabled: true            # Enable health checks
+  metrics_enabled: true                  # Enable metrics collection
+
+# Advanced settings (use with caution)
+advanced:
+  debug_mode: false                      # Enable debug mode
+  profiling_enabled: false               # Enable performance profiling
+  trace_requests: false                  # Trace API requests
+  cache_enabled: true                    # Enable response caching
+  cache_ttl: "5m"                        # Cache time-to-live
+  max_memory_usage: "1GB"                # Maximum memory usage
+  
+  # Custom headers for API requests
+  custom_headers:
+    # "X-Custom-Header": "value"
+  
+  # Proxy settings (if needed)
+  proxy:
+    enabled: false
+    url: ""                              # Proxy URL (http://user:pass@host:port)
+    bypass_hosts: []                     # Hosts to bypass proxy
+
+# Environment-specific overrides
+# These settings will override the above based on the environment
+environments:
+  development:
+    app:
+      log_level: "debug"
+    rate_limit:
+      requests_per_second: 10.0
+    advanced:
+      debug_mode: true
+      trace_requests: true
+  
+  testing:
+    database:
+      path: ":memory:"
+    download:
+      path: "./test_downloads"
+    advanced:
+      debug_mode: true
+  
+  production:
+    app:
+      log_level: "info"
+    security:
+      secure_cookies: true
+      csrf_protection: true
+    advanced:
+      debug_mode: false
+      profiling_enabled: false
