@@ -27,6 +27,8 @@ export interface Storage {
   getStats(): Statistics
   cacheContents(contents: Content[], source: CacheSource): void
   searchCachedGifs(filter: CacheFilter): Content[]
+  /** Collection ids known (from cached views) to contain this gif. */
+  gifCollectionIds(gifId: string): string[]
   close(): void
 }
 
@@ -256,6 +258,13 @@ export class SqliteStorage implements Storage {
       out.push(content)
     }
     return out
+  }
+
+  gifCollectionIds(gifId: string): string[] {
+    const rows = this.db
+      .prepare("SELECT source_id FROM gif_membership WHERE gif_id = ? AND source_type = 'collection'")
+      .all(gifId) as { source_id: string }[]
+    return rows.map((r) => r.source_id)
   }
 
   close(): void {

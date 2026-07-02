@@ -72,6 +72,7 @@ export const IPC = {
   statsGet: 'stats:get',
   historyGet: 'history:get',
   searchCache: 'cache:search',
+  gifCollections: 'cache:gifCollections',
 
   openPath: 'shell:openPath',
   pickFolder: 'dialog:pickFolder'
@@ -150,6 +151,7 @@ export interface RedgifsApi {
     sources?: { type: 'collection' | 'liked'; id: string }[]
     likedOnly?: boolean
   }): Promise<Content[]>
+  gifCollections(gifId: string): Promise<string[]>
 
   openPath(path: string): Promise<void>
   pickFolder(): Promise<string | null>
