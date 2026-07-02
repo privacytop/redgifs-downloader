@@ -330,6 +330,12 @@ export class RedgifsApi {
       undefined, true, { gifId, context: null })
   }
 
+  async removeFromCollection(folderId: string, gifId: string): Promise<void> {
+    // The remove endpoint takes a bare JSON array of gif ids as its body.
+    await this.request<void>('DELETE', `/me/collections/${encodeURIComponent(folderId)}/gifs`,
+      undefined, true, [gifId])
+  }
+
   async createCollection(name: string): Promise<void> {
     await this.request<void>('POST', '/me/collections', undefined, true, { folderName: name })
   }
