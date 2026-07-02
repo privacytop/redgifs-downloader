@@ -25,6 +25,15 @@ describe('SqliteStorage', () => {
     expect(stats.topUsers[0]).toEqual({ username: 'bob', downloads: 1, size: 100 })
   })
 
+  it('dedupes globally when username is empty', () => {
+    s = new SqliteStorage(':memory:')
+    const base = { contentName: 'a', filePath: '/p', fileSize: 100, duration: 1, width: 2,
+      height: 3, hasAudio: false, downloadedAt: 1000, thumbnail: '', searchOrder: 'best', rank: 1 }
+    s.addRecord({ username: 'bob', contentId: 'g1', ...base })
+    expect(s.hasDownloaded('', 'g1')).toBe(true)
+    expect(s.hasDownloaded('', 'g2')).toBe(false)
+  })
+
   it('persists and clears the user token', () => {
     s = new SqliteStorage(':memory:')
     expect(s.getUserToken()).toBeUndefined()

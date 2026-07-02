@@ -19,14 +19,11 @@ export interface Storage {
   close(): void
 }
 
-const SETTINGS_COLS = [
-  'downloadPath', 'maxConcurrentDownloads', 'preferredQuality', 'searchOrders',
-  'createUserFolders', 'overwriteExisting', 'darkMode', 'showNotifications'
-] as const
-
 export class SqliteStorage implements Storage {
   private db: Database.Database
 
+  // `defaults` is applied only on first run (when no settings row exists yet);
+  // once a settings row is persisted, that row wins over these defaults.
   constructor(dbPath: string, defaults?: Partial<Settings>) {
     this.db = new Database(dbPath)
     this.db.pragma('journal_mode = WAL')
@@ -81,13 +78,23 @@ export class SqliteStorage implements Storage {
     })
   }
 
+  private parseSearchOrders(raw: unknown): string[] {
+    try {
+      const v = JSON.parse(String(raw ?? ''))
+      if (Array.isArray(v) && v.every((x) => typeof x === 'string')) return v
+    } catch {
+      // fall through to defaults
+    }
+    return DEFAULT_SETTINGS.searchOrders
+  }
+
   getSettings(): Settings {
     const r = this.db.prepare('SELECT * FROM settings WHERE id = 1').get() as Record<string, unknown>
     return {
       downloadPath: String(r.downloadPath ?? ''),
       maxConcurrentDownloads: Number(r.maxConcurrentDownloads ?? 4),
       preferredQuality: (r.preferredQuality as Settings['preferredQuality']) ?? 'hd',
-      searchOrders: JSON.parse(String(r.searchOrders ?? '["best"]')),
+      searchOrders: this.parseSearchOrders(r.searchOrders),
       createUserFolders: !!r.createUserFolders,
       overwriteExisting: !!r.overwriteExisting,
       darkMode: !!r.darkMode,
@@ -169,6 +176,3 @@ export class SqliteStorage implements Storage {
     this.db.close()
   }
 }
-
-// Keep the settings column list referenced for future migrations.
-void SETTINGS_COLS
