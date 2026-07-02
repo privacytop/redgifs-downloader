@@ -228,15 +228,16 @@ export class RedgifsApi {
   }
 
   async getFollowing(page: number): Promise<UserResult[]> {
-    const data = await this.request<{ users?: any[]; creators?: any[] }>('GET', '/me/following',
+    // /v2/me/following returns the creator list under `items` (not users/creators).
+    const data = await this.request<{ items?: any[]; users?: any[]; creators?: any[] }>('GET', '/me/following',
       { page: String(page), count: '80' })
-    return (data.users ?? data.creators ?? []).map(toUserResult)
+    return (data.items ?? data.users ?? data.creators ?? []).map(toUserResult)
   }
 
   async getFollowers(page: number): Promise<UserResult[]> {
-    const data = await this.request<{ users?: any[]; creators?: any[] }>('GET', '/me/followers',
+    const data = await this.request<{ items?: any[]; users?: any[]; creators?: any[] }>('GET', '/me/followers',
       { page: String(page), count: '80' })
-    return (data.users ?? data.creators ?? []).map(toUserResult)
+    return (data.items ?? data.users ?? data.creators ?? []).map(toUserResult)
   }
 
   // ---- niches ----
