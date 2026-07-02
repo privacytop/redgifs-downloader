@@ -34,6 +34,8 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
 
   ipcMain.handle(IPC.getForYou, (_e, p: number) => api.getForYou(p))
   ipcMain.handle(IPC.searchGifs, (_e, opts) => api.searchGifs(opts))
+  ipcMain.handle(IPC.likeGif, (_e, id: string) => api.likeGif(id))
+  ipcMain.handle(IPC.unlikeGif, (_e, id: string) => api.unlikeGif(id))
   ipcMain.handle(IPC.searchCreators, (_e, opts) => api.searchCreators(opts))
   ipcMain.handle(IPC.creatorPreviews, (_e, opts) => api.creatorPreviews(opts))
   ipcMain.handle(IPC.getCreatorContent, (_e, u: string, opts) => api.getCreatorContent(u, opts))

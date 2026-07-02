@@ -33,6 +33,8 @@ export const IPC = {
 
   getForYou: 'api:getForYou',
   searchGifs: 'api:searchGifs',
+  likeGif: 'api:likeGif',
+  unlikeGif: 'api:unlikeGif',
   searchCreators: 'api:searchCreators',
   creatorPreviews: 'api:creatorPreviews',
   getCreatorContent: 'api:getCreatorContent',
@@ -97,7 +99,9 @@ export interface RedgifsApi {
   getLikes(page: number): Promise<ContentResponse>
 
   getForYou(page: number): Promise<ContentResponse>
-  searchGifs(opts: { type?: 'g' | 'i'; order?: string; page?: number; verified?: boolean; tags?: string }): Promise<ContentResponse>
+  searchGifs(opts: { type?: 'g' | 'i'; order?: string; page?: number; verified?: boolean; tags?: string; search?: string }): Promise<ContentResponse>
+  likeGif(id: string): Promise<void>
+  unlikeGif(id: string): Promise<void>
   searchCreators(opts: { order?: string; page?: number; verified?: boolean }): Promise<UserResult[]>
   creatorPreviews(opts: { order?: string; page?: number; count?: number }): Promise<ContentResponse>
   getCreatorContent(username: string, opts: { type?: 'g' | 'i'; order?: string; page?: number; tags?: string }): Promise<ContentResponse>
@@ -108,7 +112,7 @@ export interface RedgifsApi {
   getFollowers(page: number): Promise<UserResult[]>
 
   getNichesTrending(): Promise<Niche[]>
-  getNicheCategories(): Promise<Niche[]>
+  getNicheCategories(): Promise<string[]>
   getMyNiches(): Promise<Niche[]>
   getFollowingNiches(): Promise<Niche[]>
   getRelatedNiches(id: string): Promise<Niche[]>

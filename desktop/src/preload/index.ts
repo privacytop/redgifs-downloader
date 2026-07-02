@@ -17,6 +17,8 @@ const api: RedgifsApi = {
 
   getForYou: (page) => ipcRenderer.invoke(IPC.getForYou, page),
   searchGifs: (opts) => ipcRenderer.invoke(IPC.searchGifs, opts),
+  likeGif: (id) => ipcRenderer.invoke(IPC.likeGif, id),
+  unlikeGif: (id) => ipcRenderer.invoke(IPC.unlikeGif, id),
   searchCreators: (opts) => ipcRenderer.invoke(IPC.searchCreators, opts),
   creatorPreviews: (opts) => ipcRenderer.invoke(IPC.creatorPreviews, opts),
   getCreatorContent: (username, opts) => ipcRenderer.invoke(IPC.getCreatorContent, username, opts),
