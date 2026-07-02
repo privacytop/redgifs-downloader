@@ -28,9 +28,18 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.searchUsers, (_e, q: string) => api.searchUsers(q))
   ipcMain.handle(IPC.getUserContent, (_e, u: string, o: string, p: number) => api.getUserContent(u, o, p))
   ipcMain.handle(IPC.getProfile, () => api.getProfile())
-  ipcMain.handle(IPC.getLikes, (_e, p: number) => api.getLikes(p))
+  ipcMain.handle(IPC.getLikes, async (_e, p: number) => {
+    const r = await api.getLikes(p)
+    storage.cacheContents(r.contents, { type: 'liked', id: 'liked' })
+    return r
+  })
   ipcMain.handle(IPC.getCollections, (_e, u?: string) => api.getCollections(u))
-  ipcMain.handle(IPC.getCollectionContent, (_e, id: string, p: number) => api.getCollectionContent(id, p))
+  ipcMain.handle(IPC.getCollectionContent, async (_e, id: string, p: number) => {
+    const r = await api.getCollectionContent(id, p)
+    storage.cacheContents(r.contents, { type: 'collection', id })
+    return r
+  })
+  ipcMain.handle(IPC.searchCache, (_e, filter) => storage.searchCachedGifs(filter))
 
   ipcMain.handle(IPC.getForYou, (_e, p: number) => api.getForYou(p))
   ipcMain.handle(IPC.searchGifs, (_e, opts) => api.searchGifs(opts))

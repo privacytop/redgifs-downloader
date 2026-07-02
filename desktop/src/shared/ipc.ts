@@ -71,6 +71,7 @@ export const IPC = {
   settingsUpdate: 'settings:update',
   statsGet: 'stats:get',
   historyGet: 'history:get',
+  searchCache: 'cache:search',
 
   openPath: 'shell:openPath',
   pickFolder: 'dialog:pickFolder'
@@ -144,6 +145,11 @@ export interface RedgifsApi {
   updateSettings(settings: Settings): Promise<void>
   getStats(): Promise<Statistics>
   getHistory(username?: string, limit?: number): Promise<DownloadRecord[]>
+  searchCache(filter: {
+    tags?: string[]
+    sources?: { type: 'collection' | 'liked'; id: string }[]
+    likedOnly?: boolean
+  }): Promise<Content[]>
 
   openPath(path: string): Promise<void>
   pickFolder(): Promise<string | null>

@@ -16,6 +16,7 @@ import TagDetail from './pages/TagDetail'
 import Search from './pages/Search'
 import Toasts, { useToasts } from './components/Toasts'
 import { NotifyProvider } from './context/notify'
+import { BlockedTagsProvider } from './context/blockedTags'
 import { NavProvider, useNav } from './context/nav'
 import type { Route } from './context/nav'
 import { PlayerProvider } from './player/PlayerProvider'
@@ -300,18 +301,20 @@ export default function App(): JSX.Element {
 
   return (
     <NotifyProvider value={toasts.push}>
-      <NavProvider>
-        <PlayerProvider>
-          <Shell
-            auth={auth}
-            activeDownloads={activeDownloads}
-            onSignIn={signIn}
-            onSignOut={signOut}
-            notify={toasts.push}
-            toastItems={toasts.items}
-          />
-        </PlayerProvider>
-      </NavProvider>
+      <BlockedTagsProvider>
+        <NavProvider>
+          <PlayerProvider>
+            <Shell
+              auth={auth}
+              activeDownloads={activeDownloads}
+              onSignIn={signIn}
+              onSignOut={signOut}
+              notify={toasts.push}
+              toastItems={toasts.items}
+            />
+          </PlayerProvider>
+        </NavProvider>
+      </BlockedTagsProvider>
     </NotifyProvider>
   )
 }

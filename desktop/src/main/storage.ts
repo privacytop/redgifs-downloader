@@ -1,10 +1,19 @@
 import Database from 'better-sqlite3'
 import {
   DEFAULT_SETTINGS,
+  type Content,
   type DownloadRecord,
   type Settings,
   type Statistics
 } from '../shared/types'
+
+export type CacheSource = { type: 'collection' | 'liked'; id: string }
+
+export interface CacheFilter {
+  tags?: string[]
+  sources?: CacheSource[]
+  likedOnly?: boolean
+}
 
 export interface Storage {
   getSettings(): Settings
@@ -16,6 +25,8 @@ export interface Storage {
   addRecord(r: Omit<DownloadRecord, 'id'>): DownloadRecord
   getHistory(username?: string, limit?: number): DownloadRecord[]
   getStats(): Statistics
+  cacheContents(contents: Content[], source: CacheSource): void
+  searchCachedGifs(filter: CacheFilter): Content[]
   close(): void
 }
 
@@ -46,6 +57,13 @@ export class SqliteStorage implements Storage {
         file_path TEXT, file_size INTEGER, duration REAL, width INTEGER, height INTEGER,
         has_audio INTEGER, downloaded_at INTEGER, thumbnail TEXT, search_order TEXT, rank INTEGER,
         UNIQUE(username, content_id)
+      );
+      CREATE TABLE IF NOT EXISTS gif_cache (
+        id TEXT PRIMARY KEY, username TEXT, data TEXT NOT NULL, tags TEXT, cached_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS gif_membership (
+        gif_id TEXT, source_type TEXT, source_id TEXT,
+        UNIQUE(gif_id, source_type, source_id)
       );
     `)
   }
@@ -170,6 +188,74 @@ export class SqliteStorage implements Storage {
       totalDownloads: agg.n, totalSize: agg.size, totalUsers: users.n, totalCollections: 0,
       recentDownloads: this.getHistory(undefined, 10), topUsers: top
     }
+  }
+
+  cacheContents(contents: Content[], source: CacheSource): void {
+    const upsertGif = this.db.prepare(`
+      INSERT OR REPLACE INTO gif_cache (id, username, data, tags, cached_at)
+      VALUES (@id, @username, @data, @tags, @cachedAt)
+    `)
+    const upsertMembership = this.db.prepare(`
+      INSERT OR IGNORE INTO gif_membership (gif_id, source_type, source_id)
+      VALUES (@gifId, @sourceType, @sourceId)
+    `)
+    const now = Date.now()
+    const tx = this.db.transaction((items: Content[]) => {
+      for (const c of items) {
+        upsertGif.run({
+          id: c.id,
+          username: c.username ?? '',
+          data: JSON.stringify(c),
+          tags: JSON.stringify(c.tags ?? []),
+          cachedAt: now
+        })
+        upsertMembership.run({ gifId: c.id, sourceType: source.type, sourceId: source.id })
+      }
+    })
+    tx(contents)
+  }
+
+  searchCachedGifs(filter: CacheFilter): Content[] {
+    const sources = filter.sources ?? []
+    const clauses: string[] = []
+    const params: unknown[] = []
+
+    // Membership in ALL given sources (AND semantics).
+    for (const src of sources) {
+      clauses.push(
+        'EXISTS (SELECT 1 FROM gif_membership m WHERE m.gif_id = gif_cache.id AND m.source_type = ? AND m.source_id = ?)'
+      )
+      params.push(src.type, src.id)
+    }
+
+    if (filter.likedOnly) {
+      clauses.push(
+        "EXISTS (SELECT 1 FROM gif_membership m WHERE m.gif_id = gif_cache.id AND m.source_type = 'liked')"
+      )
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''
+    const rows = this.db
+      .prepare(`SELECT data FROM gif_cache ${where}`)
+      .all(...params) as { data: string }[]
+
+    const wantedTags = (filter.tags ?? []).map((t) => t.toLowerCase())
+    const out: Content[] = []
+    for (const row of rows) {
+      let content: Content
+      try {
+        content = JSON.parse(row.data) as Content
+      } catch {
+        continue
+      }
+      if (wantedTags.length) {
+        const gifTags = (content.tags ?? []).map((t) => t.toLowerCase())
+        const hasAll = wantedTags.every((t) => gifTags.includes(t))
+        if (!hasAll) continue
+      }
+      out.push(content)
+    }
+    return out
   }
 
   close(): void {

@@ -7,6 +7,7 @@ import EmptyState from '../components/EmptyState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
+import { useNav } from '../context/nav'
 import { formatCount } from '../lib/format'
 import type { Content, ContentKind, UserProfile } from '@shared/types'
 
@@ -21,6 +22,7 @@ const ORDERS: { id: string; label: string }[] = [
 /** Creator profile page: header + tag chips + type/order/view controls + feed. */
 export default function Creator({ username }: { username: string }): JSX.Element {
   const notify = useNotify()
+  const { navigate } = useNav()
   const [mode, setMode] = useViewMode('creator', 'grid')
   const [type, setType] = useState<ContentKind>('g')
   const [order, setOrder] = useState<string>('best')
@@ -210,8 +212,10 @@ export default function Creator({ username }: { username: string }): JSX.Element
           }}
         >
           {tags.slice(0, 24).map((t) => (
-            <span
+            <button
               key={t}
+              type="button"
+              onClick={() => navigate({ name: 'tag', tag: t })}
               style={{
                 fontFamily: 'var(--mono, "Space Mono", monospace)',
                 fontSize: 11,
@@ -220,11 +224,12 @@ export default function Creator({ username }: { username: string }): JSX.Element
                 border: '1px solid var(--line)',
                 borderRadius: 999,
                 padding: '3px 10px',
-                background: 'var(--panel)'
+                background: 'var(--panel)',
+                cursor: 'pointer'
               }}
             >
               {t}
-            </span>
+            </button>
           ))}
         </div>
       )}
@@ -234,15 +239,15 @@ export default function Creator({ username }: { username: string }): JSX.Element
         <EmptyState message="Nothing here yet" hint={'@' + username + ' has no ' + (type === 'g' ? 'videos' : 'images') + ' for this order.'} />
       )}
 
-      <FeedGrid items={feed.contents} mode={mode} onOpen={feed.openAt} onDownload={dl} />
-
-      {feed.hasMore && (
-        <div style={{ textAlign: 'center', marginTop: 24 }}>
-          <button className="btn" onClick={feed.loadMore} disabled={feed.loading}>
-            {feed.loading ? 'Loading…' : 'Load more'}
-          </button>
-        </div>
-      )}
+      <FeedGrid
+        items={feed.contents}
+        mode={mode}
+        onOpen={feed.openAt}
+        onDownload={dl}
+        onEndReached={feed.loadMore}
+        hasMore={feed.hasMore}
+        loading={feed.loading}
+      />
     </div>
   )
 }

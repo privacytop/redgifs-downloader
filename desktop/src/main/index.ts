@@ -13,6 +13,18 @@ function createWindow(): void {
   })
   win.on('ready-to-show', () => win.show())
 
+  // Allow the renderer to read RedGifs media into a <canvas> (for thumbnail
+  // frame capture): inject a permissive CORS header on their responses so a
+  // crossOrigin='anonymous' <video>/<img> doesn't taint the canvas.
+  win.webContents.session.webRequest.onHeadersReceived(
+    { urls: ['*://*.redgifs.com/*'] },
+    (details, callback) => {
+      const responseHeaders = { ...details.responseHeaders }
+      responseHeaders['Access-Control-Allow-Origin'] = ['*']
+      callback({ responseHeaders })
+    }
+  )
+
   registerIpc(win, storage)
 
   if (process.env['ELECTRON_RENDERER_URL']) {

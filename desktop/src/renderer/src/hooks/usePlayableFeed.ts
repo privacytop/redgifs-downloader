@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Content, ContentResponse } from '@shared/types'
 import { usePlayer } from '../player/PlayerProvider'
+import { useBlockedTags } from '../context/blockedTags'
 
 export interface PlayableFeed {
   contents: Content[]
@@ -28,6 +29,7 @@ export function usePlayableFeed(
   opts?: { nicheId?: string }
 ): PlayableFeed {
   const player = usePlayer()
+  const { isBlocked } = useBlockedTags()
   const [contents, setContents] = useState<Content[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +50,11 @@ export function usePlayableFeed(
       if (myRun !== runId.current) return [] // superseded by a reset
       pageRef.current = r.page || next
       pagesRef.current = r.pages || pageRef.current
-      const fresh = (r.contents || []).filter((c) => !seen.current.has(c.id))
+      // Dedupe by id, then drop items carrying a blocked tag so they never reach
+      // the grid or the player. When no tags are blocked, `isBlocked` is a no-op.
+      const fresh = (r.contents || [])
+        .filter((c) => !seen.current.has(c.id))
+        .filter((c) => !isBlocked(c))
       fresh.forEach((c) => seen.current.add(c.id))
       if (fresh.length) setContents((prev) => [...prev, ...fresh])
       return fresh
@@ -58,7 +64,7 @@ export function usePlayableFeed(
     } finally {
       if (myRun === runId.current) setLoading(false)
     }
-  }, [fetcher, loading])
+  }, [fetcher, loading, isBlocked])
 
   const reset = useCallback(() => {
     runId.current += 1
