@@ -65,7 +65,9 @@ export class RedgifsApi {
   }
 
   private async request<T>(method: string, path: string, params?: Record<string, string>, auth = true): Promise<T> {
-    const url = new URL(BASE + path)
+    // `path` may be an absolute URL (e.g. the /v1/me endpoint lives on a different
+    // API version than the v2 BASE) or a v2-relative path.
+    const url = new URL(path.startsWith('http') ? path : BASE + path)
     if (params) for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
     for (let attempt = 0; attempt <= 3; attempt++) {
       await this.rl.wait()
@@ -101,11 +103,12 @@ export class RedgifsApi {
   }
 
   async getProfile(): Promise<UserProfile> {
-    const u = await this.request<any>('GET', '/me')
+    // The authenticated-user profile lives on the v1 API (v2 has no /me — it 404s).
+    const u = await this.request<any>('GET', 'https://api.redgifs.com/v1/me')
     return {
-      username: u.username, name: u.name ?? '', profileUrl: u.profileUrl ?? '',
+      username: u.username, name: u.name ?? '', profileUrl: u.url ?? u.profileUrl ?? '',
       profilePic: u.profileImageUrl ?? '', followers: u.followers ?? 0, following: u.following ?? 0,
-      totalGifs: u.gifs ?? 0, views: u.views ?? 0, likes: u.likes ?? 0
+      totalGifs: u.totalGifs ?? u.gifs ?? 0, views: u.views ?? 0, likes: u.likes ?? 0
     }
   }
 
