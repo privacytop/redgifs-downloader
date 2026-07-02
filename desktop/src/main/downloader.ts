@@ -42,6 +42,7 @@ export interface DownloaderDeps {
 
 export class Downloader {
   private tasks = new Map<string, DownloadTask>()
+  private requests = new Map<string, DownloadRequest>()
   private aborters = new Map<string, AbortController>()
   private rl = new RateLimiter(150)
 
@@ -59,6 +60,7 @@ export class Downloader {
       currentItem: '', downloadPath: this.pathFor(request, settings), startTime: Date.now()
     }
     this.tasks.set(task.id, task)
+    this.requests.set(task.id, request)
     this.aborters.set(task.id, new AbortController())
     void this.run(task, request, settings)
     return task
@@ -72,11 +74,9 @@ export class Downloader {
   resume(id: string): void {
     const t = this.tasks.get(id)
     if (!t || t.status !== 'paused') return
+    const req = this.requests.get(id)
+    if (!req) return
     this.aborters.set(id, new AbortController())
-    // TODO(phase2): persist the original DownloadRequest per task and reuse it here.
-    // Current rebuild only carries type+username, so collection/single resume is unsupported
-    // and user resume re-fetches all pages (hasDownloaded dedupe keeps results correct).
-    const req = { type: t.type, username: t.username, quality: undefined } as DownloadRequest
     void this.run(t, req, this.deps.storage.getSettings())
   }
 
