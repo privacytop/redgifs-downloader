@@ -13,6 +13,13 @@ export default function Account(): JSX.Element {
   const [tag, setTag] = useState('')
   const [adding, setAdding] = useState(false)
 
+  const refetch = (): void => {
+    window.api
+      .getProfile()
+      .then((p) => setProfile(p))
+      .catch((e) => notify('Couldn’t load profile: ' + e.message, 'error'))
+  }
+
   useEffect(() => {
     let alive = true
     window.api
@@ -48,9 +55,20 @@ export default function Account(): JSX.Element {
       .then(() => {
         notify('Updated', 'success')
         setTag('')
+        refetch()
       })
       .catch((e) => notify('Update failed: ' + e.message, 'error'))
       .finally(() => setAdding(false))
+  }
+
+  const removeTag = (t: string): void => {
+    window.api
+      .updatePreferences([{ op: 'remove', path: '/blocked_tags', value: [t] }])
+      .then(() => {
+        notify('Updated', 'success')
+        refetch()
+      })
+      .catch((e) => notify('Update failed: ' + e.message, 'error'))
   }
 
   const signOut = (): void => {
@@ -125,10 +143,24 @@ export default function Account(): JSX.Element {
 
           <section style={{ marginTop: 30 }}>
             <div style={sectionLabelStyle}>Blocked tags</div>
-            <p style={sectionHintStyle}>
-              Add a tag to hide it from your feeds. This list is write-only — the app can’t read
-              your current blocks back.
-            </p>
+            <p style={sectionHintStyle}>Add a tag to hide it from your feeds.</p>
+            {profile.blockedTags.length > 0 && (
+              <div style={chipRowStyle}>
+                {profile.blockedTags.map((t) => (
+                  <span key={t} style={chipStyle}>
+                    {t}
+                    <button
+                      type="button"
+                      aria-label={'Remove ' + t}
+                      onClick={() => removeTag(t)}
+                      style={chipRemoveStyle}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, maxWidth: 420 }}>
               <input
                 style={{ flex: 1 }}
@@ -144,6 +176,20 @@ export default function Account(): JSX.Element {
               </button>
             </div>
           </section>
+
+          {profile.preferences.length > 0 && (
+            <section style={{ marginTop: 34 }}>
+              <div style={sectionLabelStyle}>Preferences</div>
+              <p style={sectionHintStyle}>Content preferences from your RedGifs account.</p>
+              <div style={chipRowStyle}>
+                {profile.preferences.map((p) => (
+                  <span key={p} style={chipStyle}>
+                    {p}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section style={{ marginTop: 34 }}>
             <div style={sectionLabelStyle}>Session</div>
@@ -250,4 +296,40 @@ const sectionHintStyle: CSSProperties = {
   lineHeight: 1.5,
   color: 'var(--dim)',
   maxWidth: 520
+}
+
+const chipRowStyle: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+  marginBottom: 14
+}
+
+const chipStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  fontFamily: 'var(--mono)',
+  fontSize: 12,
+  letterSpacing: '0.03em',
+  color: 'var(--ink)',
+  background: 'var(--panel)',
+  border: '1px solid var(--line)',
+  borderRadius: 999,
+  padding: '4px 10px'
+}
+
+const chipRemoveStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 16,
+  height: 16,
+  padding: 0,
+  fontSize: 14,
+  lineHeight: 1,
+  color: 'var(--mut)',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer'
 }

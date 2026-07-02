@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { DownloadRecord, Statistics } from '@shared/types'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
+import { useNav } from '../context/nav'
 import { formatSize, formatCount } from '../lib/format'
 
 interface Tile {
@@ -50,6 +51,7 @@ function StatTile({ label, value }: Tile): JSX.Element {
 }
 
 export default function History(): JSX.Element {
+  const { navigate } = useNav()
   const [records, setRecords] = useState<DownloadRecord[]>([])
   const [stats, setStats] = useState<Statistics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -151,7 +153,20 @@ export default function History(): JSX.Element {
                     flexWrap: 'wrap'
                   }}
                 >
-                  <span style={{ color: 'var(--ember)' }}>@{r.username}</span>
+                  <button
+                    type="button"
+                    onClick={() => navigate({ name: 'creator', username: r.username })}
+                    style={{
+                      color: 'var(--ember)',
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      font: 'inherit',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    @{r.username}
+                  </button>
                   <span>{formatSize(r.fileSize)}</span>
                   <span>{new Date(r.downloadedAt).toLocaleDateString()}</span>
                 </div>

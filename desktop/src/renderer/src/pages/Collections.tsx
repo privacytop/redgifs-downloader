@@ -123,7 +123,8 @@ export default function Collections(): JSX.Element {
               <div
                 style={{
                   position: 'relative',
-                  aspectRatio: '16 / 9',
+                  aspectRatio: '3 / 4',
+                  minHeight: 220,
                   background: 'var(--bg)',
                   overflow: 'hidden'
                 }}

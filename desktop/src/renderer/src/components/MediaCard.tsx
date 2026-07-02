@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Content } from '@shared/types'
 import { useNav } from '../context/nav'
+import { captureFrame, useThumbnailMode } from '../hooks/useThumbnailMode'
 
 interface MediaCardProps {
   content: Content
@@ -27,14 +28,76 @@ function formatViews(n: number): string {
 export default function MediaCard({ content, onOpen, onDownload, badge }: MediaCardProps): JSX.Element {
   const { navigate } = useNav()
   const [hover, setHover] = useState(false)
+  const [thumbMode] = useThumbnailMode()
   const videoRef = useRef<HTMLVideoElement>(null)
 
   const urls = content.urls
-  const poster = urls.thumbnail || urls.poster
+  const thumbnail = urls.thumbnail || urls.poster
   // `silent` may be added to ContentUrls later (owned by another agent); read it
   // defensively without assuming the field exists on the shared type.
   const previewSrc =
     (urls as Record<string, string | undefined>).silent || urls.sd || urls.hd
+  const frameSrc = urls.silent || urls.sd || urls.hd
+
+  // Poster actually shown: falls back to the API thumbnail until (or unless) a
+  // captured video frame resolves.
+  const [captured, setCaptured] = useState<string | null>(null)
+  const poster = captured || thumbnail
+
+  // For `middle`/`random`, capture a frame on mount and use it as the poster.
+  useEffect(() => {
+    if (thumbMode !== 'middle' && thumbMode !== 'random') {
+      setCaptured(null)
+      return
+    }
+    if (!frameSrc) return
+    let alive = true
+    captureFrame(frameSrc, thumbMode)
+      .then((data) => {
+        if (alive && data) setCaptured(data)
+      })
+      .catch(() => {
+        /* keep thumbnail on failure */
+      })
+    return () => {
+      alive = false
+    }
+  }, [thumbMode, frameSrc])
+
+  // `auto`: after the thumbnail loads, measure its luminance; if it's near-black,
+  // replace it with a mid-clip frame. Canvas reads may throw (taint) — swallow.
+  function onThumbLoad(e: React.SyntheticEvent<HTMLImageElement>): void {
+    if (thumbMode !== 'auto' || captured || !frameSrc) return
+    try {
+      const img = e.currentTarget
+      const sw = 32
+      const sh = Math.max(1, Math.round((img.naturalHeight / img.naturalWidth) * sw)) || 32
+      const canvas = document.createElement('canvas')
+      canvas.width = sw
+      canvas.height = sh
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(img, 0, 0, sw, sh)
+      const { data } = ctx.getImageData(0, 0, sw, sh)
+      let sum = 0
+      const px = data.length / 4
+      for (let i = 0; i < data.length; i += 4) {
+        sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]
+      }
+      const avg = sum / px
+      if (avg < 18) {
+        captureFrame(frameSrc, 'middle')
+          .then((frame) => {
+            if (frame) setCaptured(frame)
+          })
+          .catch(() => {
+            /* keep thumbnail */
+          })
+      }
+    } catch {
+      /* canvas tainted or read failed — keep the thumbnail */
+    }
+  }
 
   function enter(): void {
     setHover(true)
@@ -66,7 +129,16 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
       }}
     >
       {poster && (
-        <img className="pcard-poster" src={poster} alt={content.title || content.username} loading="lazy" />
+        <img
+          className="pcard-poster"
+          src={poster}
+          alt={content.title || content.username}
+          loading="lazy"
+          // Needed so the `auto` luminance check can read the pixels without
+          // tainting the canvas. Harmless for other modes.
+          crossOrigin="anonymous"
+          onLoad={onThumbLoad}
+        />
       )}
 
       {hover && previewSrc && (

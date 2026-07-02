@@ -11,18 +11,18 @@ import type { Content } from '@shared/types'
 type ContentType = 'g' | 'i'
 
 const ORDERS: { id: string; label: string }[] = [
-  { id: 'trending', label: 'Trending' },
   { id: 'latest', label: 'Latest' },
   { id: 'best', label: 'Best' },
   { id: 'top', label: 'Top' },
-  { id: 'new', label: 'New' }
+  { id: 'new', label: 'New' },
+  { id: 'trending', label: 'Trending' }
 ]
 
 /** Browse RedGifs by content type, order, and verified status. */
 export default function Discover(): JSX.Element {
   const notify = useNotify()
   const [type, setType] = useState<ContentType>('g')
-  const [order, setOrder] = useState('trending')
+  const [order, setOrder] = useState('latest')
   const [verified, setVerified] = useState(false)
   const [mode, setMode] = useViewMode('discover', 'grid')
 
@@ -110,15 +110,15 @@ export default function Discover(): JSX.Element {
         <EmptyState message="Nothing here yet" hint="Try a different order or content type." />
       )}
 
-      <FeedGrid items={feed.contents} mode={mode} onOpen={feed.openAt} onDownload={dl} />
-
-      {feed.hasMore && (
-        <div style={{ textAlign: 'center', marginTop: 24 }}>
-          <button className="btn" onClick={feed.loadMore} disabled={feed.loading}>
-            {feed.loading ? 'Loading…' : 'Load more'}
-          </button>
-        </div>
-      )}
+      <FeedGrid
+        items={feed.contents}
+        mode={mode}
+        onOpen={feed.openAt}
+        onDownload={dl}
+        onEndReached={feed.loadMore}
+        hasMore={feed.hasMore}
+        loading={feed.loading}
+      />
     </div>
   )
 }

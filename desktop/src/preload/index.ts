@@ -57,6 +57,7 @@ const api: RedgifsApi = {
   updateSettings: (settings) => ipcRenderer.invoke(IPC.settingsUpdate, settings),
   getStats: () => ipcRenderer.invoke(IPC.statsGet),
   getHistory: (username, limit) => ipcRenderer.invoke(IPC.historyGet, username, limit),
+  searchCache: (filter) => ipcRenderer.invoke(IPC.searchCache, filter),
 
   openPath: (path) => ipcRenderer.invoke(IPC.openPath, path),
   pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
