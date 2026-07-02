@@ -2,7 +2,7 @@ import { BrowserWindow, session } from 'electron'
 import type { AuthStatus } from '../shared/types'
 import type { RedgifsApi } from './api'
 import type { Storage } from './storage'
-import { isUserToken } from './jwt'
+import { decodeJwt, isUserToken } from './jwt'
 
 const PARTITION = 'persist:redgifs'
 // The SPA serves /login as a client route that opens the login modal directly
@@ -21,20 +21,17 @@ export class AuthManager {
 
   constructor(private deps: AuthDeps) {}
 
-  async status(): Promise<AuthStatus> {
+  status(): AuthStatus {
     if (!this.deps.api.isAuthenticated()) return { authenticated: false }
-    return { authenticated: true, username: await this.fetchUsername() }
+    return { authenticated: true, username: this.usernameFromToken(this.deps.storage.getUserToken()) }
   }
 
-  // Best-effort: resolve the logged-in username via /me. Never throws; returns
-  // undefined on failure (e.g. transient network error or an expired token).
-  private async fetchUsername(): Promise<string | undefined> {
-    try {
-      const profile = await this.deps.api.getProfile()
-      return profile.username || undefined
-    } catch {
-      return undefined
-    }
+  // The captured token is a Kinde ID token whose `preferred_username` claim is the
+  // RedGifs username (there is no /me endpoint — it 404s). Decode it locally.
+  private usernameFromToken(token?: string): string | undefined {
+    if (!token) return undefined
+    const u = decodeJwt(token)?.preferred_username
+    return typeof u === 'string' && u ? u : undefined
   }
 
   /**
@@ -50,13 +47,11 @@ export class AuthManager {
       const ses = session.fromPartition(PARTITION)
       let settled = false
 
-      const finish = async (token?: string): Promise<void> => {
+      const finish = (token?: string): void => {
         if (settled) return
         settled = true
         // Detach the header listener.
         ses.webRequest.onBeforeSendHeaders(null)
-        // Close the window immediately so the user isn't left staring at it while
-        // we resolve the profile.
         const w = this.win
         this.win = null
         if (w && !w.isDestroyed()) w.close()
@@ -65,7 +60,7 @@ export class AuthManager {
         if (token) {
           this.deps.api.setUserToken(token)
           this.deps.storage.setUserToken(token)
-          username = await this.fetchUsername()
+          username = this.usernameFromToken(token)
         }
         const status: AuthStatus = { authenticated: !!token, username }
         this.deps.onChange(status)
