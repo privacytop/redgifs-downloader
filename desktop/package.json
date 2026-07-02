@@ -81,7 +81,8 @@
     "publish": {
       "provider": "github",
       "owner": "privacytop",
-      "repo": "redgifs-downloader"
+      "repo": "redgifs-downloader",
+      "releaseType": "release"
     }
   }
 }

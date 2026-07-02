@@ -1,12 +1,15 @@
 name: Release
 
-# Two ways to run:
-#   1. Push a version tag:  git tag v4.0.0 && git push origin v4.0.0
-#   2. Manually from the GitHub UI: Actions tab -> "Release" -> "Run workflow"
+# Runs on:
+#   1. Every push to main -> auto-releases v4.0.<run-number> (auto-incrementing)
+#   2. A version tag (git tag v4.1.0 && git push origin v4.1.0) -> that version
+#   3. Manually from the Actions tab -> "Release" -> "Run workflow"
 # Each OS runner builds its native executables and electron-builder uploads
 # them to a GitHub Release.
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -44,9 +47,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Version = the pushed tag (e.g. v4.1.0 -> 4.1.0), else 4.0.<run-number>,
+      # which auto-increments on every push to main. All matrix jobs in a run
+      # share github.run_number, so every OS publishes the same version.
+      - name: Set version
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          else
+            V="4.0.${{ github.run_number }}"
+          fi
+          echo "Building version $V"
+          npm version "$V" --no-git-tag-version --allow-same-version
+
       - name: Build and publish
         env:
-          # Provided automatically by Actions; lets electron-builder upload the
-          # built artifacts to the release for this tag.
+          # Provided automatically by Actions; lets electron-builder create the
+          # release and upload the built artifacts to it.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build && npx --no-install electron-builder --publish always

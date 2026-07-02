@@ -150,14 +150,14 @@ No building required — grab the file for your OS from the **[Releases](https:/
 
 ### Releasing (maintainers)
 
-Executables are built and attached to a GitHub Release automatically by CI whenever a version tag is pushed:
+Every push to `main` triggers the [`Release` workflow](.github/workflows/release.yml): it builds on Windows + Linux runners and publishes a new GitHub Release automatically, auto-incrementing the version as `v4.0.<run-number>`.
+
+To cut a specific version instead, push a tag — the release uses that version:
 
 ```bash
-git tag v4.0.0
-git push origin v4.0.0
+git tag v4.1.0
+git push origin v4.1.0
 ```
-
-The [`Release` workflow](.github/workflows/release.yml) builds on Windows + Linux runners and uploads all the files above to the release for that tag.
 
 ---
 
