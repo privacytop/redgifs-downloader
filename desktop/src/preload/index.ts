@@ -15,7 +15,31 @@ const api: RedgifsApi = {
     ipcRenderer.invoke(IPC.getCollectionContent, collectionId, page),
   getLikes: (page) => ipcRenderer.invoke(IPC.getLikes, page),
 
+  getForYou: (page) => ipcRenderer.invoke(IPC.getForYou, page),
+  searchGifs: (opts) => ipcRenderer.invoke(IPC.searchGifs, opts),
+  searchCreators: (opts) => ipcRenderer.invoke(IPC.searchCreators, opts),
+  creatorPreviews: (opts) => ipcRenderer.invoke(IPC.creatorPreviews, opts),
+  getCreatorContent: (username, opts) => ipcRenderer.invoke(IPC.getCreatorContent, username, opts),
+  getCreatorTags: (username) => ipcRenderer.invoke(IPC.getCreatorTags, username),
+  getUser: (username) => ipcRenderer.invoke(IPC.getUser, username),
+  getMyContent: (opts) => ipcRenderer.invoke(IPC.getMyContent, opts),
+  getFollowing: (page) => ipcRenderer.invoke(IPC.getFollowing, page),
+  getFollowers: (page) => ipcRenderer.invoke(IPC.getFollowers, page),
+
+  getNichesTrending: () => ipcRenderer.invoke(IPC.getNichesTrending),
+  getNicheCategories: () => ipcRenderer.invoke(IPC.getNicheCategories),
+  getMyNiches: () => ipcRenderer.invoke(IPC.getMyNiches),
+  getFollowingNiches: () => ipcRenderer.invoke(IPC.getFollowingNiches),
+  getRelatedNiches: (id) => ipcRenderer.invoke(IPC.getRelatedNiches, id),
+  getNichePreviews: (opts) => ipcRenderer.invoke(IPC.getNichePreviews, opts),
+  nicheFeedback: (nicheId, gifId, state) =>
+    ipcRenderer.invoke(IPC.nicheFeedback, nicheId, gifId, state),
+
+  updatePreferences: (ops) => ipcRenderer.invoke(IPC.updatePreferences, ops),
+
   startDownload: (request) => ipcRenderer.invoke(IPC.downloadStart, request),
+  downloadContents: (contents, username) =>
+    ipcRenderer.invoke(IPC.downloadContents, contents, username),
   listDownloads: () => ipcRenderer.invoke(IPC.downloadList),
   pauseDownload: (id) => ipcRenderer.invoke(IPC.downloadPause, id),
   resumeDownload: (id) => ipcRenderer.invoke(IPC.downloadResume, id),

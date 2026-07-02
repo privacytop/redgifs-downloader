@@ -6,7 +6,21 @@ export interface ContentUrls {
   sd?: string
   thumbnail?: string
   poster?: string
+  silent?: string
 }
+
+export interface Niche {
+  id: string
+  name: string
+  description: string
+  gifs: number
+  subscribers: number
+  thumbnail: string
+  cover?: string
+  owner?: string
+}
+
+export type ContentKind = 'g' | 'i'
 
 export interface Content {
   id: string
