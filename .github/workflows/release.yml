@@ -1,13 +1,15 @@
 name: Release
 
-# Cut a release by pushing a version tag, e.g.:
-#   git tag v4.0.0 && git push origin v4.0.0
+# Two ways to run:
+#   1. Push a version tag:  git tag v4.0.0 && git push origin v4.0.0
+#   2. Manually from the GitHub UI: Actions tab -> "Release" -> "Run workflow"
 # Each OS runner builds its native executables and electron-builder uploads
-# them to the GitHub Release for that tag.
+# them to a GitHub Release.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
