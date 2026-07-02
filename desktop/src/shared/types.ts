@@ -67,6 +67,8 @@ export interface UserProfile {
   totalGifs: number
   views: number
   likes: number
+  blockedTags: string[]
+  preferences: string[]
 }
 
 export interface Collection {

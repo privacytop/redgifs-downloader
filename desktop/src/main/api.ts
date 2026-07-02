@@ -114,7 +114,8 @@ export class RedgifsApi {
     return {
       username: u.username, name: u.name ?? '', profileUrl: u.url ?? u.profileUrl ?? '',
       profilePic: u.profileImageUrl ?? '', followers: u.followers ?? 0, following: u.following ?? 0,
-      totalGifs: u.totalGifs ?? u.gifs ?? 0, views: u.views ?? 0, likes: u.likes ?? 0
+      totalGifs: u.totalGifs ?? u.gifs ?? 0, views: u.views ?? 0, likes: u.likes ?? 0,
+      blockedTags: u.blockedTags ?? u.blocked_tags ?? [], preferences: u.preferences ?? []
     }
   }
 
@@ -143,6 +144,14 @@ export class RedgifsApi {
     return toContent(data.gif)
   }
 
+  async likeGif(id: string): Promise<void> {
+    await this.request<void>('PUT', `/gifs/${encodeURIComponent(id)}/like`)
+  }
+
+  async unlikeGif(id: string): Promise<void> {
+    await this.request<void>('DELETE', `/gifs/${encodeURIComponent(id)}/like`)
+  }
+
   // ---- feeds ----
 
   async getForYou(page: number): Promise<ContentResponse> {
@@ -152,13 +161,16 @@ export class RedgifsApi {
 
   // ---- search ----
 
-  async searchGifs(opts: { type?: 'g' | 'i'; order?: string; page?: number; verified?: boolean; tags?: string }): Promise<ContentResponse> {
+  async searchGifs(opts: { type?: 'g' | 'i'; order?: string; page?: number; verified?: boolean; tags?: string; search?: string }): Promise<ContentResponse> {
     const params: Record<string, string> = { count: '80' }
     if (opts.type) params.type = opts.type
-    if (opts.order) params.order = opts.order
+    // `trending` returns an empty (cursor-based) result set, so default to `latest`.
+    params.order = opts.order ?? 'latest'
     if (opts.page) params.page = String(opts.page)
     if (opts.verified) params.verified = 'y'
-    if (opts.tags) params.search_text = opts.tags
+    // Both map to the `search_text` param; an explicit `search` wins over `tags`.
+    if (opts.search) params.search_text = opts.search
+    else if (opts.tags) params.search_text = opts.tags
     return toContentResponse(await this.request<RawContentResponse>('GET', '/gifs/search', params))
   }
 
@@ -200,7 +212,8 @@ export class RedgifsApi {
     return {
       username: u?.username ?? username, name: u?.name ?? '', profileUrl: u?.url ?? u?.profileUrl ?? '',
       profilePic: u?.profileImageUrl ?? '', followers: u?.followers ?? 0, following: u?.following ?? 0,
-      totalGifs: u?.totalGifs ?? u?.gifs ?? 0, views: u?.views ?? 0, likes: u?.likes ?? 0
+      totalGifs: u?.totalGifs ?? u?.gifs ?? 0, views: u?.views ?? 0, likes: u?.likes ?? 0,
+      blockedTags: [], preferences: []
     }
   }
 
@@ -231,8 +244,11 @@ export class RedgifsApi {
   async getNichesTrending(): Promise<Niche[]> {
     return this.niches('GET', '/niches/trending/search')
   }
-  async getNicheCategories(): Promise<Niche[]> {
-    return this.niches('GET', '/niches/categories')
+  async getNicheCategories(): Promise<string[]> {
+    // Unlike the other niche endpoints, /niches/categories returns bare
+    // category-name strings under `categories`, not niche objects.
+    const data = await this.request<{ categories?: string[] }>('GET', '/niches/categories')
+    return data.categories ?? []
   }
   async getMyNiches(): Promise<Niche[]> {
     return this.niches('GET', '/niches/my')
