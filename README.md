@@ -150,7 +150,7 @@ No building required — grab the file for your OS from the **[Releases](https:/
 
 ### Releasing (maintainers)
 
-Every push to `main` triggers the [`Release` workflow](.github/workflows/release.yml): it builds on Windows + Linux runners and publishes a new GitHub Release automatically, auto-incrementing the version as `v4.0.<run-number>`.
+Every push to `main` triggers the [`Release` workflow](.github/workflows/release.yml): it builds on Windows + Linux runners and publishes a new GitHub Release automatically, auto-incrementing the version as `v4.<run-number>.0`.
 
 To cut a specific version instead, push a tag — the release uses that version:
 

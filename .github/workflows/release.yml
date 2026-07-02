@@ -47,16 +47,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Version = the pushed tag (e.g. v4.1.0 -> 4.1.0), else 4.0.<run-number>,
-      # which auto-increments on every push to main. All matrix jobs in a run
-      # share github.run_number, so every OS publishes the same version.
+      # Version = the pushed tag (e.g. v4.1.0 -> 4.1.0), else 4.<run-number>.0
+      # (semver needs three parts), which auto-increments on every push to main.
+      # All matrix jobs in a run share github.run_number, so every OS publishes
+      # the same version.
       - name: Set version
         shell: bash
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             V="${GITHUB_REF_NAME#v}"
           else
-            V="4.0.${{ github.run_number }}"
+            V="4.${{ github.run_number }}.0"
           fi
           echo "Building version $V"
           npm version "$V" --no-git-tag-version --allow-same-version
