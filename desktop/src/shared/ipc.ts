@@ -10,6 +10,7 @@ import type {
   DownloadRecord,
   DownloadRequest,
   DownloadTask,
+  LibraryProgress,
   Niche,
   Settings,
   Statistics,
@@ -74,6 +75,7 @@ export const IPC = {
   historyGet: 'history:get',
   searchCache: 'cache:search',
   gifCollections: 'cache:gifCollections',
+  indexLibrary: 'library:index',
 
   openPath: 'shell:openPath',
   pickFolder: 'dialog:pickFolder'
@@ -84,6 +86,7 @@ export const EVT = {
   authChanged: 'evt:auth:changed',
   downloadProgress: 'evt:download:progress',
   downloadUpdated: 'evt:download:updated',
+  libraryProgress: 'evt:library:progress',
   toast: 'evt:toast'
 } as const
 
@@ -91,6 +94,7 @@ export type RendererEventMap = {
   [EVT.authChanged]: AuthStatus
   [EVT.downloadProgress]: DownloadTask
   [EVT.downloadUpdated]: DownloadTask
+  [EVT.libraryProgress]: LibraryProgress
   [EVT.toast]: ToastPayload
 }
 
@@ -154,6 +158,8 @@ export interface RedgifsApi {
     likedOnly?: boolean
   }): Promise<Content[]>
   gifCollections(gifId: string): Promise<string[]>
+  /** Walk all collections + liked videos, caching their metadata locally. */
+  indexLibrary(): Promise<LibraryProgress>
 
   openPath(path: string): Promise<void>
   pickFolder(): Promise<string | null>

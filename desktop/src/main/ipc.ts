@@ -4,6 +4,7 @@ import type { Content, DownloadTask } from '../shared/types'
 import { RedgifsApi } from './api'
 import { AuthManager } from './auth'
 import { Downloader } from './downloader'
+import { indexLibrary } from './indexer'
 import type { Storage } from './storage'
 
 export function registerIpc(win: BrowserWindow, storage: Storage): void {
@@ -41,6 +42,17 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   })
   ipcMain.handle(IPC.searchCache, (_e, filter) => storage.searchCachedGifs(filter))
   ipcMain.handle(IPC.gifCollections, (_e, gifId: string) => storage.gifCollectionIds(gifId))
+
+  let indexing = false
+  ipcMain.handle(IPC.indexLibrary, async () => {
+    if (indexing) throw new Error('Library indexing already in progress')
+    indexing = true
+    try {
+      return await indexLibrary(api, storage, (p) => send(EVT.libraryProgress, p))
+    } finally {
+      indexing = false
+    }
+  })
 
   ipcMain.handle(IPC.getForYou, (_e, p: number) => api.getForYou(p))
   ipcMain.handle(IPC.searchGifs, (_e, opts) => api.searchGifs(opts))
