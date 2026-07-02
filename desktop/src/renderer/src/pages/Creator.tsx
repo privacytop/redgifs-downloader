@@ -11,12 +11,12 @@ import { useNav } from '../context/nav'
 import { formatCount } from '../lib/format'
 import type { Content, ContentKind, UserProfile } from '@shared/types'
 
+// Orders the /users/{u}/search endpoint actually reorders by (curl-verified).
 const ORDERS: { id: string; label: string }[] = [
   { id: 'best', label: 'Best' },
   { id: 'latest', label: 'Latest' },
   { id: 'oldest', label: 'Oldest' },
-  { id: 'top28', label: 'Top (28d)' },
-  { id: 'trending', label: 'Trending' }
+  { id: 'top', label: 'Top' }
 ]
 
 /** Creator profile page: header + tag chips + type/order/view controls + feed. */

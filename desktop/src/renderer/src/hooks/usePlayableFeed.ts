@@ -37,12 +37,16 @@ export function usePlayableFeed(
   const pagesRef = useRef(1)
   const seen = useRef<Set<string>>(new Set())
   const runId = useRef(0)
+  // Guard concurrency via a ref (not the `loading` state) so it can't go stale
+  // in closures or get stuck `true` when a run is superseded by a reset.
+  const loadingRef = useRef(false)
 
   const loadNext = useCallback(async (): Promise<Content[]> => {
-    if (loading) return []
+    if (loadingRef.current) return []
     if (pageRef.current > 0 && pageRef.current >= pagesRef.current) return []
     const myRun = runId.current
     const next = pageRef.current + 1
+    loadingRef.current = true
     setLoading(true)
     setError(null)
     try {
@@ -62,19 +66,26 @@ export function usePlayableFeed(
       if (myRun === runId.current) setError((e as Error).message)
       return []
     } finally {
-      if (myRun === runId.current) setLoading(false)
+      if (myRun === runId.current) {
+        loadingRef.current = false
+        setLoading(false)
+      }
     }
-  }, [fetcher, loading, isBlocked])
+  }, [fetcher, isBlocked])
+
+  // Always call the latest loadNext (fresh fetcher/order) from a stable reset.
+  const loadNextRef = useRef(loadNext)
+  loadNextRef.current = loadNext
 
   const reset = useCallback(() => {
     runId.current += 1
     pageRef.current = 0
     pagesRef.current = 1
     seen.current = new Set()
+    loadingRef.current = false
     setContents([])
     setError(null)
-    void loadNext()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void loadNextRef.current()
   }, [])
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
