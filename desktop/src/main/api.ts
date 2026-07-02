@@ -2,6 +2,13 @@ import type {
   Collection, Content, ContentResponse, UserProfile, UserResult
 } from '../shared/types'
 import { RateLimiter } from './ratelimit'
+import { decodeJwt } from './jwt'
+
+// Read the `exp` (seconds) claim from a JWT as epoch ms, or 0 if absent.
+function expiryFromJwt(token: string): number {
+  const exp = decodeJwt(token)?.exp
+  return typeof exp === 'number' ? exp * 1000 : 0
+}
 
 const BASE = 'https://api.redgifs.com/v2'
 
@@ -31,14 +38,25 @@ export class RedgifsApi {
   private tempToken = ''
   private tempExpiry = 0
   private userToken = ''
+  private userExpiry = 0
   private rl = new RateLimiter(120)
 
-  setUserToken(token: string): void { this.userToken = token }
-  clearUserToken(): void { this.userToken = '' }
-  isAuthenticated(): boolean { return this.userToken !== '' }
+  setUserToken(token: string): void {
+    this.userToken = token
+    this.userExpiry = expiryFromJwt(token)
+  }
+  clearUserToken(): void {
+    this.userToken = ''
+    this.userExpiry = 0
+  }
+  // A user is authenticated only while their token is present and unexpired.
+  // (A missing exp claim, userExpiry === 0, is treated as non-expiring.)
+  isAuthenticated(): boolean {
+    return this.userToken !== '' && (this.userExpiry === 0 || Date.now() < this.userExpiry)
+  }
 
   private async token(): Promise<string> {
-    if (this.userToken) return this.userToken
+    if (this.isAuthenticated()) return this.userToken
     if (this.tempToken && Date.now() < this.tempExpiry) return this.tempToken
     const data = await this.request<{ token: string }>('GET', '/auth/temporary', undefined, false)
     this.tempToken = data.token
