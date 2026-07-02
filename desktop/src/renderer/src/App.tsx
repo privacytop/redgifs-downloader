@@ -12,6 +12,8 @@ import Account from './pages/Account'
 import Creator from './pages/Creator'
 import CollectionDetail from './pages/CollectionDetail'
 import NicheDetail from './pages/NicheDetail'
+import TagDetail from './pages/TagDetail'
+import Search from './pages/Search'
 import Toasts, { useToasts } from './components/Toasts'
 import { NotifyProvider } from './context/notify'
 import { NavProvider, useNav } from './context/nav'
@@ -20,11 +22,42 @@ import { PlayerProvider } from './player/PlayerProvider'
 import type { AuthStatus, DownloadTask } from '@shared/types'
 
 // Top-level nav routes reachable from the sidebar (the param-less routes).
-type NavName = Extract<Route, { name: string; username?: undefined; id?: undefined }>['name']
+type NavName =
+  | 'for-you'
+  | 'discover'
+  | 'following'
+  | 'niches'
+  | 'collections'
+  | 'likes'
+  | 'downloads'
+  | 'history'
 
 interface NavItem {
   id: NavName
   label: string
+}
+
+/**
+ * Which top-level nav item should read as active for a given route. Detail
+ * routes map back to their parent so the sidebar item stays underlined:
+ * `collection`→`collections`, `niche`→`niches`, `creator`/`tag`/`search`→`discover`.
+ */
+function activeNavName(route: Route): NavName | null {
+  switch (route.name) {
+    case 'collection':
+      return 'collections'
+    case 'niche':
+      return 'niches'
+    case 'creator':
+    case 'tag':
+    case 'search':
+      return 'discover'
+    case 'settings':
+    case 'account':
+      return null
+    default:
+      return route.name
+  }
 }
 interface NavGroup {
   label: string
@@ -89,6 +122,10 @@ function RoutedPage({
       return <CollectionDetail id={route.id} title={route.title} />
     case 'niche':
       return <NicheDetail id={route.id} title={route.title} />
+    case 'tag':
+      return <TagDetail tag={route.tag} />
+    case 'search':
+      return <Search query={route.query} />
   }
 }
 
@@ -110,6 +147,8 @@ function Shell({
 }): JSX.Element {
   const { route, navigate, back, canBack } = useNav()
   const avatarLetter = (auth.username?.[0] ?? '?').toUpperCase()
+  const [searchTerm, setSearchTerm] = useState('')
+  const activeName = activeNavName(route)
 
   return (
     <div className="app">
@@ -118,11 +157,26 @@ function Shell({
           RedGifs<span className="dot">.</span>
         </div>
 
+        <input
+          className="sidebar-search"
+          type="search"
+          value={searchTerm}
+          placeholder="Search…"
+          aria-label="Search"
+          onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const q = searchTerm.trim()
+              if (q) navigate({ name: 'search', query: q })
+            }
+          }}
+        />
+
         {GROUPS.map((group) => (
           <div className="nav-group" key={group.label}>
             <div className="nav-group-label">{group.label}</div>
             {group.items.map((item) => {
-              const isActive = route.name === item.id
+              const isActive = activeName === item.id
               const count = item.id === 'downloads' ? activeDownloads : 0
               return (
                 <button
@@ -152,7 +206,7 @@ function Shell({
                 {auth.username ? `@${auth.username}` : 'Signed in'}
               </button>
               <button className="btn btn-sm" onClick={onSignOut} title="Sign out">
-                Out
+                Sign out
               </button>
             </>
           ) : (

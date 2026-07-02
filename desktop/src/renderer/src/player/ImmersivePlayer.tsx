@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Content } from '@shared/types'
 import type { PlaySource } from './PlayerProvider'
 import { useNotify } from '../context/notify'
+import { useNav } from '../context/nav'
 import { formatViews, formatDuration } from '../lib/format'
 
 interface ImmersivePlayerProps {
@@ -20,12 +21,14 @@ const PREFETCH_WITHIN = 3
  */
 export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProps): JSX.Element {
   const notify = useNotify()
+  const { navigate } = useNav()
 
   const [items, setItems] = useState<Content[]>(source.items)
   const [index, setIndex] = useState(
     Math.min(Math.max(source.index, 0), Math.max(source.items.length - 1, 0))
   )
   const [nicheVote, setNicheVote] = useState<'up' | 'down' | null>(null)
+  const [liked, setLiked] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastStepRef = useRef(0)
@@ -75,9 +78,10 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     [maybeLoadMore]
   )
 
-  // Reset the per-clip niche vote when the clip changes.
+  // Reset per-clip state (niche vote, like) when the clip changes.
   useEffect(() => {
     setNicheVote(null)
+    setLiked(false)
   }, [index])
 
   // --- keyboard: Esc closes, arrows step -----------------------------------
@@ -142,6 +146,35 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     [source.nicheId, current]
   )
 
+  // Optimistic like toggle: flip immediately, revert + notify on failure.
+  const toggleLike = useCallback(async (): Promise<void> => {
+    if (!current) return
+    const next = !liked
+    setLiked(next)
+    try {
+      if (next) await window.api.likeGif(current.id)
+      else await window.api.unlikeGif(current.id)
+    } catch (e) {
+      setLiked(!next)
+      notify((next ? 'Like' : 'Unlike') + ' failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    }
+  }, [current, liked, notify])
+
+  // Close the player, then navigate — so the destination page is on top.
+  const goCreator = useCallback((): void => {
+    if (!current) return
+    onClose()
+    navigate({ name: 'creator', username: current.username })
+  }, [current, onClose, navigate])
+
+  const goTag = useCallback(
+    (tag: string): void => {
+      onClose()
+      navigate({ name: 'tag', tag })
+    },
+    [onClose, navigate]
+  )
+
   if (!current) {
     return (
       <div className="player" onClick={onClose}>
@@ -188,7 +221,14 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
       <aside className="player-rail">
         <div className="player-creator">
           <div className="player-avatar" aria-hidden="true">{avatarLetter}</div>
-          <div className="player-handle">@{current.username}</div>
+          <button
+            type="button"
+            className="player-handle"
+            title={`View @${current.username}`}
+            onClick={goCreator}
+          >
+            @{current.username}
+          </button>
         </div>
 
         <button className="btn btn-ember player-save" type="button" onClick={save}>
@@ -198,6 +238,19 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
             <path d="M5 21h14" />
           </svg>
           Save
+        </button>
+
+        <button
+          className={`btn player-like ${liked ? 'on' : ''}`}
+          type="button"
+          onClick={toggleLike}
+          aria-pressed={liked}
+          title={liked ? 'Unlike' : 'Like'}
+        >
+          <svg viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+          </svg>
+          {liked ? 'Liked' : 'Like'}
         </button>
 
         <div className="player-stats">
@@ -234,7 +287,15 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
         {current.tags.length > 0 && (
           <div className="player-tags">
             {current.tags.slice(0, 8).map((t) => (
-              <span className="player-tag" key={t}>{t}</span>
+              <button
+                type="button"
+                className="player-tag"
+                key={t}
+                title={`Browse #${t}`}
+                onClick={() => goTag(t)}
+              >
+                #{t}
+              </button>
             ))}
           </div>
         )}

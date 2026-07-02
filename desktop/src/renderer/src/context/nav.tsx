@@ -18,6 +18,8 @@ export type Route =
   | { name: 'creator'; username: string }
   | { name: 'collection'; id: string; title: string }
   | { name: 'niche'; id: string; title: string }
+  | { name: 'tag'; tag: string }
+  | { name: 'search'; query: string }
 
 interface NavContextValue {
   route: Route

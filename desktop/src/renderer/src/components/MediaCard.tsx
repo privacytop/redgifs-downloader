@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import type { Content } from '@shared/types'
+import { useNav } from '../context/nav'
 
 interface MediaCardProps {
   content: Content
@@ -24,6 +25,7 @@ function formatViews(n: number): string {
  * button downloads. Video only mounts/plays while hovered — cheap when idle.
  */
 export default function MediaCard({ content, onOpen, onDownload, badge }: MediaCardProps): JSX.Element {
+  const { navigate } = useNav()
   const [hover, setHover] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -103,7 +105,17 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
       </button>
 
       <div className="pcard-meta">
-        <span className="pcard-user">@{content.username}</span>
+        <button
+          type="button"
+          className="pcard-user"
+          title={`View @${content.username}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            navigate({ name: 'creator', username: content.username })
+          }}
+        >
+          @{content.username}
+        </button>
         <span className="pcard-views">{formatViews(content.views)} views</span>
       </div>
     </div>
