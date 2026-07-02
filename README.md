@@ -137,9 +137,27 @@ npm run build      # production bundle
 
 Requires Node + npm. First `npm install` compiles a native SQLite module for your platform automatically.
 
-### Prebuilt binary
+### Download a prebuilt executable
 
-If you'd rather not build it yourself, grab a packaged build from the repository's **[Releases](https://github.com/privacytop/redgifs-downloader/releases)** page when one is published for your OS, and just run it.
+No building required — grab the file for your OS from the **[Releases](https://github.com/privacytop/redgifs-downloader/releases)** page:
+
+| OS | File | How to run |
+|---|---|---|
+| **Windows** | `RedGifs-Downloader-<version>-Setup.exe` | Run the installer. |
+| **Windows** (no install) | `RedGifs-Downloader-<version>-portable.exe` | Double‑click — runs directly, nothing installed. |
+| **Linux** | `RedGifs-Downloader-<version>.AppImage` | `chmod +x` it, then run it. |
+| **Linux** (Debian/Ubuntu) | `RedGifs-Downloader-<version>.deb` | `sudo apt install ./RedGifs-Downloader-<version>.deb` |
+
+### Releasing (maintainers)
+
+Executables are built and attached to a GitHub Release automatically by CI whenever a version tag is pushed:
+
+```bash
+git tag v4.0.0
+git push origin v4.0.0
+```
+
+The [`Release` workflow](.github/workflows/release.yml) builds on Windows + Linux runners and uploads all the files above to the release for that tag.
 
 ---
 

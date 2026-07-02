@@ -1,0 +1,42 @@
+name: Release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v4.0.0 && git push origin v4.0.0
+# Each OS runner builds its native executables and electron-builder uploads
+# them to the GitHub Release for that tag.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and publish
+        env:
+          # Provided automatically by Actions; lets electron-builder upload the
+          # built artifacts to the release for this tag.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run build && npx --no-install electron-builder --publish always
