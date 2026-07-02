@@ -1,0 +1,45 @@
+import { contextBridge, ipcRenderer } from 'electron'
+import { IPC, EVT, type RedgifsApi, type RendererEventMap } from '../shared/ipc'
+
+const api: RedgifsApi = {
+  login: () => ipcRenderer.invoke(IPC.authLogin),
+  logout: () => ipcRenderer.invoke(IPC.authLogout),
+  authStatus: () => ipcRenderer.invoke(IPC.authStatus),
+
+  searchUsers: (query) => ipcRenderer.invoke(IPC.searchUsers, query),
+  getUserContent: (username, order, page) =>
+    ipcRenderer.invoke(IPC.getUserContent, username, order, page),
+  getProfile: () => ipcRenderer.invoke(IPC.getProfile),
+  getCollections: (username) => ipcRenderer.invoke(IPC.getCollections, username),
+  getCollectionContent: (collectionId, page) =>
+    ipcRenderer.invoke(IPC.getCollectionContent, collectionId, page),
+  getLikes: (page) => ipcRenderer.invoke(IPC.getLikes, page),
+
+  startDownload: (request) => ipcRenderer.invoke(IPC.downloadStart, request),
+  listDownloads: () => ipcRenderer.invoke(IPC.downloadList),
+  pauseDownload: (id) => ipcRenderer.invoke(IPC.downloadPause, id),
+  resumeDownload: (id) => ipcRenderer.invoke(IPC.downloadResume, id),
+  cancelDownload: (id) => ipcRenderer.invoke(IPC.downloadCancel, id),
+
+  getSettings: () => ipcRenderer.invoke(IPC.settingsGet),
+  updateSettings: (settings) => ipcRenderer.invoke(IPC.settingsUpdate, settings),
+  getStats: () => ipcRenderer.invoke(IPC.statsGet),
+  getHistory: (username, limit) => ipcRenderer.invoke(IPC.historyGet, username, limit),
+
+  openPath: (path) => ipcRenderer.invoke(IPC.openPath, path),
+  pickFolder: () => ipcRenderer.invoke(IPC.pickFolder),
+
+  on: <K extends keyof RendererEventMap>(
+    channel: K,
+    listener: (payload: RendererEventMap[K]) => void
+  ) => {
+    const handler = (_e: unknown, payload: RendererEventMap[K]): void => listener(payload)
+    ipcRenderer.on(channel as string, handler)
+    return () => ipcRenderer.removeListener(channel as string, handler)
+  }
+}
+
+// Guard against the event channel constants being unused in type-only builds.
+void EVT
+
+contextBridge.exposeInMainWorld('api', api)
