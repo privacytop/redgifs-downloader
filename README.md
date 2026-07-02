@@ -17,17 +17,32 @@ Two ways to use it:
 
 ## CLI — one file, no install
 
-The whole downloader is a single self‑contained file. **No `git clone`, no `npm install`.** If you have Node 18 or newer, download the one file and run it:
+The whole downloader is a single self‑contained file. **No `git clone`, no `npm install`.** If you have Node 18 or newer, download the one file and run it.
+
+**macOS / Linux:**
 
 ```bash
-# grab the single file...
 curl -O https://raw.githubusercontent.com/privacytop/redgifs-downloader/main/redgifs-dl.mjs
+node redgifs-dl.mjs -u <username>
+```
 
-# ...and run it
+**Windows (PowerShell):**
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/privacytop/redgifs-downloader/main/redgifs-dl.mjs -OutFile redgifs-dl.mjs
+node redgifs-dl.mjs -u <username>
+```
+
+**Windows (cmd.exe):**
+
+```bat
+curl.exe -O https://raw.githubusercontent.com/privacytop/redgifs-downloader/main/redgifs-dl.mjs
 node redgifs-dl.mjs -u <username>
 ```
 
 That's it. It uses only Node built‑ins (no dependencies to install). Re‑run the same command any time to resume — already‑downloaded gifs are skipped.
+
+> On Windows, use `curl.exe` (not bare `curl`) — in PowerShell `curl` is an alias for `Invoke-WebRequest` and won't accept `-O`. Or just download the raw file in your browser and `node redgifs-dl.mjs` from that folder.
 
 > Don't have Node? Install it from [nodejs.org](https://nodejs.org) (v18+), or via your package manager (`brew install node`, `apt install nodejs`, `winget install OpenJS.NodeJS`).
 
