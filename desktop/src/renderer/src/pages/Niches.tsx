@@ -172,12 +172,12 @@ export default function Niches(): JSX.Element {
           }}
         >
           {isCategories
-            ? (rows as string[]).map((c) => (
-                <CategoryCard key={c} name={c} onOpen={openCategory} />
-              ))
-            : (rows as Niche[]).map((n) => (
-                <NicheCard key={n.id} niche={n} onOpen={openNiche} />
-              ))}
+            ? (rows as string[])
+                .filter((c): c is string => typeof c === 'string')
+                .map((c) => <CategoryCard key={c} name={c} onOpen={openCategory} />)
+            : (rows as Niche[])
+                .filter((n): n is Niche => typeof n === 'object' && n !== null)
+                .map((n) => <NicheCard key={n.id} niche={n} onOpen={openNiche} />)}
         </div>
       )}
 

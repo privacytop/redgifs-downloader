@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { readCache, writeCache } from '../lib/cache'
 
 export interface CachedResource<T> {
@@ -22,6 +22,17 @@ export function useCachedResource<T>(
   const [data, setData] = useState<T | null>(() => readCache<T>(key))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // When `key` changes, the effect that swaps in the new value runs *after*
+  // render — leaving one render where `data` still holds the previous key's
+  // value, which may be a different shape (e.g. Niche[] vs string[]) and crash
+  // the consumer. Swap synchronously here so the render matching the new key
+  // always sees the new key's cache (or null), never the stale one.
+  const keyRef = useRef(key)
+  if (keyRef.current !== key) {
+    keyRef.current = key
+    setData(readCache<T>(key))
+  }
 
   const refresh = useCallback(() => {
     setLoading(true)

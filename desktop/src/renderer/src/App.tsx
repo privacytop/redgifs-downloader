@@ -5,6 +5,7 @@ import ForYou from './pages/ForYou'
 import Discover from './pages/Discover'
 import Following from './pages/Following'
 import Niches from './pages/Niches'
+import ErrorBoundary from './components/ErrorBoundary'
 import Collections from './pages/Collections'
 import Library from './pages/Library'
 import Likes from './pages/Likes'
@@ -238,7 +239,9 @@ function Shell({
             Back
           </button>
         )}
-        <RoutedPage route={route} notify={notify} />
+        <ErrorBoundary resetKey={route}>
+          <RoutedPage route={route} notify={notify} />
+        </ErrorBoundary>
       </main>
 
       <Toasts items={toastItems} />
