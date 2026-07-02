@@ -3,6 +3,11 @@ import { join } from 'path'
 import { SqliteStorage } from './storage'
 import { registerIpc } from './ipc'
 
+// Must run before app is ready: the command-line switch is the reliable way to
+// let the player autoplay clips with sound (the webPreferences flag alone is
+// flaky). Videos start playing on their own; clicking toggles play/pause.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
+
 let storage: SqliteStorage
 
 function createWindow(): void {

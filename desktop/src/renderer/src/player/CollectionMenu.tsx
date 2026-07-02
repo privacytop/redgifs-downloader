@@ -12,11 +12,13 @@ interface CollectionMenuProps {
 // Midnight Press inline styles (tokens.css is off-limits for this task).
 const panelStyle: CSSProperties = {
   position: 'absolute',
-  bottom: 'calc(100% + 8px)',
-  right: 0,
+  // Open to the LEFT of the rail button (which sits at the screen's right edge)
+  // and downward from its top, clamped to the viewport so it never runs off.
+  right: 'calc(100% + 12px)',
+  top: 0,
   zIndex: 6,
-  width: 240,
-  maxHeight: 300,
+  width: 260,
+  maxHeight: '60vh',
   overflowY: 'auto',
   background: 'var(--panel)',
   border: '1px solid var(--line2)',

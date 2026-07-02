@@ -91,14 +91,17 @@ export function usePlayableFeed(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(reset, deps)
 
+  // Final safety net: hide blocked-tag items even if the block set loaded after
+  // the pages were fetched, so they never reach the grid or the player.
+  const visible = contents.filter((c) => !isBlocked(c))
   const hasMore = pageRef.current < pagesRef.current
 
   const openAt = useCallback(
     (_content: Content, index: number): void => {
-      player.open({ items: contents, index, label, loadMore: loadNext, nicheId: opts?.nicheId })
+      player.open({ items: visible, index, label, loadMore: loadNext, nicheId: opts?.nicheId })
     },
-    [player, contents, label, loadNext, opts?.nicheId]
+    [player, visible, label, loadNext, opts?.nicheId]
   )
 
-  return { contents, loading, error, hasMore, loadMore: () => void loadNext(), reload: reset, openAt }
+  return { contents: visible, loading, error, hasMore, loadMore: () => void loadNext(), reload: reset, openAt }
 }
