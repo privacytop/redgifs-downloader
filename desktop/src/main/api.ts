@@ -145,11 +145,22 @@ export class RedgifsApi {
   }
 
   async likeGif(id: string): Promise<void> {
-    await this.request<void>('PUT', `/gifs/${encodeURIComponent(id)}/like`)
+    // The like endpoint requires a body describing where the like came from.
+    await this.request<void>('PUT', `/gifs/${encodeURIComponent(id)}/like`, undefined, true, {
+      context: null,
+      source: 'profile',
+      source_id: null,
+      position: 0
+    })
   }
 
   async unlikeGif(id: string): Promise<void> {
-    await this.request<void>('DELETE', `/gifs/${encodeURIComponent(id)}/like`)
+    await this.request<void>('DELETE', `/gifs/${encodeURIComponent(id)}/like`, undefined, true, {
+      context: null,
+      source: 'profile',
+      source_id: null,
+      position: 0
+    })
   }
 
   // ---- feeds ----
@@ -312,7 +323,7 @@ export class RedgifsApi {
 
   async addToCollection(folderId: string, gifId: string): Promise<void> {
     await this.request<void>('POST', `/me/collections/${encodeURIComponent(folderId)}/gifs`,
-      undefined, true, { gifs: [gifId] })
+      undefined, true, { gifId, context: null })
   }
 
   async createCollection(name: string): Promise<void> {

@@ -9,7 +9,13 @@ function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 940, minHeight: 640,
     backgroundColor: '#0f172a', show: false, autoHideMenuBar: true,
-    webPreferences: { preload: join(__dirname, '../preload/index.js'), sandbox: false }
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      // Let the immersive player autoplay clips (with sound) without a prior
+      // gesture — otherwise the first clip stays paused until the user scrolls.
+      autoplayPolicy: 'no-user-gesture-required'
+    }
   })
   win.on('ready-to-show', () => win.show())
 
