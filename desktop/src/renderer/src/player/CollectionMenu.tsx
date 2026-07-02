@@ -10,21 +10,27 @@ interface CollectionMenuProps {
 }
 
 // Midnight Press inline styles (tokens.css is off-limits for this task).
+// Rendered as a centered modal so the rail can never clip it off-screen.
+const backdropStyle: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 60,
+  background: 'rgba(0, 0, 0, 0.5)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center'
+}
+
 const panelStyle: CSSProperties = {
-  position: 'absolute',
-  // Open to the LEFT of the rail button (which sits at the screen's right edge)
-  // and downward from its top, clamped to the viewport so it never runs off.
-  right: 'calc(100% + 12px)',
-  top: 0,
-  zIndex: 6,
-  width: 260,
-  maxHeight: '60vh',
+  width: 360,
+  maxWidth: 'calc(100vw - 48px)',
+  maxHeight: '70vh',
   overflowY: 'auto',
   background: 'var(--panel)',
   border: '1px solid var(--line2)',
-  borderRadius: 'var(--radius)',
-  boxShadow: '0 18px 50px rgba(0, 0, 0, 0.6)',
-  padding: 6,
+  borderRadius: 12,
+  boxShadow: '0 24px 60px rgba(0, 0, 0, 0.7)',
+  padding: 8,
   display: 'flex',
   flexDirection: 'column',
   gap: 2
@@ -128,11 +134,9 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
     void load()
   }, [])
 
-  // Dismiss on outside click or Esc. Stop Esc from also closing the player.
+  // Esc closes the menu (and is stopped from also closing the player). Outside
+  // clicks are handled by the backdrop's onClick.
   useEffect(() => {
-    const onDown = (e: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onClose()
-    }
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -140,12 +144,8 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
         onClose()
       }
     }
-    document.addEventListener('mousedown', onDown)
     document.addEventListener('keydown', onKey, true)
-    return () => {
-      document.removeEventListener('mousedown', onDown)
-      document.removeEventListener('keydown', onKey, true)
-    }
+    return () => document.removeEventListener('keydown', onKey, true)
   }, [onClose])
 
   // Focus the input when the create row appears.
@@ -185,14 +185,15 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
   }
 
   return (
-    <div
-      ref={rootRef}
-      style={panelStyle}
-      role="menu"
-      aria-label="Add to collection"
-      onWheel={(e) => e.stopPropagation()}
-    >
-      <div style={labelStyle}>add to collection</div>
+    <div style={backdropStyle} onClick={onClose} onWheel={(e) => e.stopPropagation()}>
+      <div
+        ref={rootRef}
+        style={panelStyle}
+        role="menu"
+        aria-label="Add to collection"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={labelStyle}>add to collection</div>
 
       {collections === null ? (
         <div style={hintStyle}>Loading…</div>
@@ -277,6 +278,7 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
           <span>+ New collection…</span>
         </button>
       )}
+      </div>
     </div>
   )
 }
