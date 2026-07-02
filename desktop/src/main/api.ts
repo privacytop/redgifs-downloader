@@ -282,6 +282,41 @@ export class RedgifsApi {
   async updatePreferences(ops: Array<{ op: string; path: string; value: unknown }>): Promise<void> {
     await this.request<void>('PATCH', 'https://api.redgifs.com/v1/me', undefined, true, { operations: ops })
   }
+
+  // ---- follows ----
+
+  // Follow/unfollow live on the v1 API, keyed by username (not the v2 BASE).
+  async followUser(username: string): Promise<void> {
+    await this.request<void>('PUT', `https://api.redgifs.com/v1/me/follows/${encodeURIComponent(username)}`)
+  }
+
+  async unfollowUser(username: string): Promise<void> {
+    await this.request<void>('DELETE', `https://api.redgifs.com/v1/me/follows/${encodeURIComponent(username)}`)
+  }
+
+  // The follow-list response shape is unverified, so accept the plausible
+  // envelopes (bare array / users / follows / creators) and elements that are
+  // either bare username strings or objects with username/name.
+  async getFollows(): Promise<string[]> {
+    const data = await this.request<any>('GET', 'https://api.redgifs.com/v1/me/follows')
+    const list: any[] = Array.isArray(data)
+      ? data
+      : (data?.users ?? data?.follows ?? data?.creators ?? [])
+    return list
+      .map((e) => (typeof e === 'string' ? e : (e?.username ?? e?.name ?? '')))
+      .filter((u): u is string => !!u)
+  }
+
+  // ---- collections (mutations) ----
+
+  async addToCollection(folderId: string, gifId: string): Promise<void> {
+    await this.request<void>('POST', `/me/collections/${encodeURIComponent(folderId)}/gifs`,
+      undefined, true, { gifs: [gifId] })
+  }
+
+  async createCollection(name: string): Promise<void> {
+    await this.request<void>('POST', '/me/collections', undefined, true, { folderName: name })
+  }
 }
 
 function toUserResult(u: any): UserResult {
