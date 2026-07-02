@@ -43,6 +43,14 @@ export class RedgifsApi {
   private userToken = ''
   private userExpiry = 0
   private rl = new RateLimiter(120)
+  // Called when an authed request is rejected (401) despite holding a user
+  // token — i.e. the token expired/was revoked. Should attempt a refresh and
+  // resolve true if a fresh token is now in place (so the request can retry).
+  private onAuthExpired?: () => Promise<boolean>
+
+  setOnAuthExpired(cb: () => Promise<boolean>): void {
+    this.onAuthExpired = cb
+  }
 
   setUserToken(token: string): void {
     this.userToken = token
@@ -90,7 +98,16 @@ export class RedgifsApi {
         this.rl.note429((body.error?.delay ?? 60) * 1000)
         continue
       }
-      if (resp.status === 401 && auth && !this.userToken) { this.tempToken = ''; continue }
+      if (resp.status === 401 && auth) {
+        // No user token: the anon temp token went stale — drop it and retry.
+        if (!this.userToken) { this.tempToken = ''; continue }
+        // User token rejected: try a silent refresh once, then retry with it.
+        if (this.onAuthExpired && attempt < 3) {
+          const refreshed = await this.onAuthExpired()
+          if (refreshed) continue
+        }
+        throw new Error(`HTTP ${resp.status} on ${path}`)
+      }
       if (resp.status === 404) throw new Error(`not found: ${path}`)
       throw new Error(`HTTP ${resp.status} on ${path}`)
     }

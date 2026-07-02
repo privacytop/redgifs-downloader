@@ -25,6 +25,9 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
     storage,
     onChange: (status) => send(EVT.authChanged, status)
   })
+  // Enable silent token refresh (proactive timer + reactive on 401) and kick
+  // one off now if the stored token is already near expiry.
+  auth.init()
 
   ipcMain.handle(IPC.searchUsers, (_e, q: string) => api.searchUsers(q))
   ipcMain.handle(IPC.getUserContent, (_e, u: string, o: string, p: number) => api.getUserContent(u, o, p))
