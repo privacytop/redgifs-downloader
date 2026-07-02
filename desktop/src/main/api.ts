@@ -238,17 +238,19 @@ export class RedgifsApi {
     return toContentResponse(await this.request<RawContentResponse>('GET', '/me/content', params))
   }
 
-  async getFollowing(page: number): Promise<UserResult[]> {
+  async getFollowing(page: number): Promise<{ items: UserResult[]; page: number; pages: number }> {
     // /v2/me/following returns the creator list under `items` (not users/creators).
-    const data = await this.request<{ items?: any[]; users?: any[]; creators?: any[] }>('GET', '/me/following',
-      { page: String(page), count: '80' })
-    return (data.items ?? data.users ?? data.creators ?? []).map(toUserResult)
+    const data = await this.request<{ items?: any[]; users?: any[]; creators?: any[]; page?: number; pages?: number }>(
+      'GET', '/me/following', { page: String(page), count: '80' })
+    const users = (data.items ?? data.users ?? data.creators ?? []).map(toUserResult)
+    return { items: users, page: data.page ?? page, pages: data.pages ?? page }
   }
 
-  async getFollowers(page: number): Promise<UserResult[]> {
-    const data = await this.request<{ items?: any[]; users?: any[]; creators?: any[] }>('GET', '/me/followers',
-      { page: String(page), count: '80' })
-    return (data.items ?? data.users ?? data.creators ?? []).map(toUserResult)
+  async getFollowers(page: number): Promise<{ items: UserResult[]; page: number; pages: number }> {
+    const data = await this.request<{ items?: any[]; users?: any[]; creators?: any[]; page?: number; pages?: number }>(
+      'GET', '/me/followers', { page: String(page), count: '80' })
+    const users = (data.items ?? data.users ?? data.creators ?? []).map(toUserResult)
+    return { items: users, page: data.page ?? page, pages: data.pages ?? page }
   }
 
   // ---- niches ----

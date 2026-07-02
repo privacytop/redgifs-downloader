@@ -17,6 +17,7 @@ export default function Following(): JSX.Element {
   const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const pageRef = useRef(1)
+  const sentinelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -34,33 +35,47 @@ export default function Following(): JSX.Element {
   }, [])
 
   const loadMore = useCallback(() => {
-    if (loading) return
+    if (loading || !hasMore) return
     setLoading(true)
     setError(null)
     const page = pageRef.current
     window.api
       .getFollowing(page)
       .then((res) => {
-        const list = res ?? []
+        const list = res.items ?? []
         setCreators((prev) => {
           const seen = new Set(prev.map((c) => c.username))
           return [...prev, ...list.filter((c) => !seen.has(c.username))]
         })
-        setHasMore(list.length > 0)
-        pageRef.current = page + 1
+        // Stop at the real last page (avoids a 400 on the page past the end).
+        setHasMore(res.page < res.pages)
+        pageRef.current = res.page + 1
       })
       .catch((e: Error) => {
-        setError(e.message)
         setHasMore(false)
-        notify('Couldn’t load following: ' + e.message, 'error')
+        if (page === 1) setError(e.message) // only surface a genuine first-page failure
       })
       .finally(() => setLoading(false))
-  }, [loading, notify])
+  }, [loading, hasMore])
 
   useEffect(() => {
     if (authed) loadMore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
+
+  // Infinite scroll: load the next page when the sentinel scrolls into view.
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore()
+      },
+      { rootMargin: '400px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [loadMore, hasMore, authed, creators.length])
 
   if (authed === false) {
     return (
@@ -111,11 +126,18 @@ export default function Following(): JSX.Element {
         </div>
       )}
 
-      {authed === true && hasMore && creators.length > 0 && (
-        <div style={{ textAlign: 'center', marginTop: 24 }}>
-          <button className="btn" onClick={loadMore} disabled={loading}>
-            {loading ? 'Loading…' : 'Load more'}
-          </button>
+      {authed === true && hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
+      {loading && creators.length > 0 && (
+        <div
+          style={{
+            textAlign: 'center',
+            marginTop: 20,
+            fontFamily: 'Space Mono, monospace',
+            fontSize: 12,
+            color: 'var(--dim)'
+          }}
+        >
+          Loading…
         </div>
       )}
     </div>
