@@ -24,9 +24,11 @@
 
 import { parseArgs } from 'node:util'
 import { createWriteStream, promises as fs, readdirSync, existsSync } from 'node:fs'
-import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createInterface } from 'node:readline/promises'
+import http from 'node:http'
+import https from 'node:https'
+import tls from 'node:tls'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -48,6 +50,138 @@ const C = process.stdout.isTTY
 
 let VERBOSE = false
 const stamp = () => new Date().toISOString().replace('T', ' ').slice(0, 19)
+
+// ---------------------------------------------------------------------------
+// Proxy pool + zero-dep HTTP transport
+//
+// Node's global `fetch` can't be routed through a proxy without undici's
+// ProxyAgent (not a built-in), so we do our own requests over node:https/http
+// with HTTP-CONNECT tunneling for https targets. Rotating a pool of proxies
+// spreads requests across IPs, which is what actually relieves per-IP rate
+// limits. Supports http/https proxies (incl. basic auth); redirects + streaming.
+// ---------------------------------------------------------------------------
+
+function parseProxy(raw) {
+  const u = new URL(raw)
+  const protocol = u.protocol.replace(':', '')
+  if (protocol !== 'http' && protocol !== 'https') {
+    throw new Error(`Unsupported proxy protocol "${protocol}" in ${raw} (only http/https)`)
+  }
+  return {
+    protocol,
+    host: u.hostname,
+    port: u.port ? Number(u.port) : protocol === 'https' ? 443 : 80,
+    auth: u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : null,
+    label: `${u.hostname}:${u.port || (protocol === 'https' ? 443 : 80)}`
+  }
+}
+
+class ProxyPool {
+  constructor(proxies = []) {
+    this.proxies = proxies
+    this.i = 0
+  }
+  get size() { return this.proxies.length }
+  /** Round-robin the next proxy, or null when the pool is empty (direct). */
+  next() {
+    if (!this.proxies.length) return null
+    const p = this.proxies[this.i % this.proxies.length]
+    this.i += 1
+    return p
+  }
+}
+
+function drain(stream) {
+  try { stream.resume() } catch { /* already consumed/destroyed */ }
+}
+
+function collect(stream) {
+  return new Promise((resolve, reject) => {
+    const chunks = []
+    stream.on('data', (c) => chunks.push(c))
+    stream.on('end', () => resolve(Buffer.concat(chunks)))
+    stream.on('error', reject)
+  })
+}
+
+function armTimeout(req, ms) {
+  if (ms) req.setTimeout(ms, () => req.destroy(new Error(`Request timed out after ${ms}ms`)))
+}
+
+/**
+ * GET a URL, optionally through an http/https proxy, following redirects.
+ * Resolves a small response shape: { status, headers, stream, json(), text() }.
+ * The caller MUST consume/drain `stream` (json()/text()/pipeline or drain()).
+ */
+function httpRequest(rawUrl, opts = {}) {
+  const { method = 'GET', headers = {}, timeoutMs = 30000, proxy = null, maxRedirects = 5 } = opts
+  return new Promise((resolve, reject) => {
+    const target = new URL(rawUrl)
+    const isHttps = target.protocol === 'https:'
+    const port = target.port ? Number(target.port) : isHttps ? 443 : 80
+    const reqHeaders = { 'User-Agent': 'RedGifs-Downloader/2.1', Accept: '*/*', Host: target.host, ...headers }
+    const pathQ = target.pathname + target.search
+
+    const onResponse = (res) => {
+      const { statusCode: status, headers: h } = res
+      if ([301, 302, 303, 307, 308].includes(status) && h.location && maxRedirects > 0) {
+        drain(res)
+        const nextUrl = new URL(h.location, target).toString()
+        resolve(httpRequest(nextUrl, { method, headers, timeoutMs, proxy, maxRedirects: maxRedirects - 1 }))
+        return
+      }
+      resolve({
+        status,
+        headers: h,
+        stream: res,
+        json: () => collect(res).then((b) => JSON.parse(b.toString('utf-8'))),
+        text: () => collect(res).then((b) => b.toString('utf-8'))
+      })
+    }
+
+    if (proxy && isHttps) {
+      // Tunnel via CONNECT, then TLS over the tunneled socket.
+      const connectHeaders = { Host: `${target.hostname}:${port}` }
+      if (proxy.auth) connectHeaders['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64')
+      const mod = proxy.protocol === 'https' ? https : http
+      const creq = mod.request({
+        host: proxy.host, port: proxy.port, method: 'CONNECT',
+        path: `${target.hostname}:${port}`, headers: connectHeaders
+      })
+      creq.on('connect', (cres, socket) => {
+        if (cres.statusCode !== 200) {
+          socket.destroy()
+          reject(new Error(`Proxy CONNECT failed: ${cres.statusCode}`))
+          return
+        }
+        const req = https.request({
+          hostname: target.hostname, port, path: pathQ, method, headers: reqHeaders, agent: false,
+          createConnection: () => tls.connect({ socket, servername: target.hostname })
+        }, onResponse)
+        armTimeout(req, timeoutMs)
+        req.on('error', reject)
+        req.end()
+      })
+      armTimeout(creq, timeoutMs)
+      creq.on('error', reject)
+      creq.end()
+    } else if (proxy) {
+      // Plain HTTP target through the proxy: absolute-form request line.
+      const ph = { ...reqHeaders }
+      if (proxy.auth) ph['Proxy-Authorization'] = 'Basic ' + Buffer.from(proxy.auth).toString('base64')
+      const req = http.request({ host: proxy.host, port: proxy.port, method, path: rawUrl, headers: ph }, onResponse)
+      armTimeout(req, timeoutMs)
+      req.on('error', reject)
+      req.end()
+    } else {
+      const mod = isHttps ? https : http
+      const req = mod.request({ hostname: target.hostname, port, path: pathQ, method, headers: reqHeaders }, onResponse)
+      armTimeout(req, timeoutMs)
+      req.on('error', reject)
+      req.end()
+    }
+  })
+}
 const log = {
   info: (m) => console.error(`${C.dim}${stamp()}${C.reset} ${C.blue}INFO${C.reset}  ${m}`),
   warn: (m) => console.error(`${C.dim}${stamp()}${C.reset} ${C.yellow}WARN${C.reset}  ${m}`),
@@ -74,6 +208,9 @@ function makeConfig(overrides = {}) {
     searchOrders: ['top', 'trending', 'recent', 'best', 'latest'],
     pageSize: 100,
     maxPagesPerOrder: 30,
+
+    // Proxy rotation (null = direct connection).
+    proxyPool: null,
 
     // live perf counters (mutated in place, mirror the Python dataclass)
     responseTimes: [], // keep last 100
@@ -385,14 +522,19 @@ class RedGifsAPI {
     this.rateLimiter = new RateLimiter(config)
   }
 
+  /** Next proxy from the rotating pool, or null for a direct connection. */
+  nextProxy() {
+    return this.config.proxyPool ? this.config.proxyPool.next() : null
+  }
+
   async getToken() {
     const t = now()
     if (this.token && t < this.tokenExpiry - 300) return this.token
     await this.rateLimiter.waitIfNeeded()
     let resp
     try {
-      resp = await fetch(`${RedGifsAPI.BASE_URL}/v2/auth/temporary`,
-        { signal: AbortSignal.timeout(this.config.apiTimeout * 1000) })
+      resp = await httpRequest(`${RedGifsAPI.BASE_URL}/v2/auth/temporary`,
+        { timeoutMs: this.config.apiTimeout * 1000, proxy: this.nextProxy() })
     } catch (e) {
       log.error(`Failed to get auth token: ${e}`)
       this.rateLimiter.updateAfterFailure()
@@ -410,6 +552,7 @@ class RedGifsAPI {
       this.rateLimiter.updateAfterFailure(429, data)
       throw new Error(`Rate limited while getting token: ${resp.status}`)
     }
+    drain(resp.stream)
     this.rateLimiter.updateAfterFailure(resp.status)
     throw new Error(`Failed to get token: ${resp.status}`)
   }
@@ -424,9 +567,10 @@ class RedGifsAPI {
         await this.rateLimiter.waitIfNeeded()
 
         const start = now()
-        const resp = await fetch(url, {
+        const resp = await httpRequest(url, {
           headers: { Authorization: `Bearer ${token}` },
-          signal: AbortSignal.timeout(this.config.apiTimeout * 1000)
+          timeoutMs: this.config.apiTimeout * 1000,
+          proxy: this.nextProxy()
         })
         pushCapped(this.config.responseTimes, now() - start)
 
@@ -455,6 +599,7 @@ class RedGifsAPI {
         }
 
         if (resp.status >= 500) {
+          drain(resp.stream)
           log.warn(`Server error ${resp.status}, retrying...`)
           nonRateRetries += 1
           this.rateLimiter.updateAfterFailure(resp.status)
@@ -467,6 +612,7 @@ class RedGifsAPI {
         }
 
         if (resp.status === 404) {
+          drain(resp.stream)
           log.warn(`Resource not found (404): ${url}`)
           this.config.failedRequests += 1
           return { gifs: [], pages: 0, total: 0 }
@@ -532,14 +678,17 @@ class Downloader {
       try {
         await this.api.rateLimiter.waitIfNeeded()
         const start = now()
-        const resp = await fetch(url, { signal: AbortSignal.timeout(this.config.downloadTimeout * 1000) })
+        const resp = await httpRequest(url, {
+          timeoutMs: this.config.downloadTimeout * 1000,
+          proxy: this.api.nextProxy()
+        })
 
         if (resp.status === 200) {
           await fs.mkdir(path.dirname(outputPath), { recursive: true })
           // Stream to a .part file, then atomically rename — a crash mid-write
           // never leaves a truncated file that later looks "already downloaded".
           const partPath = `${outputPath}.part`
-          await pipeline(Readable.fromWeb(resp.body), createWriteStream(partPath))
+          await pipeline(resp.stream, createWriteStream(partPath))
           await fs.rename(partPath, outputPath)
 
           pushCapped(this.config.responseTimes, now() - start)
@@ -565,6 +714,7 @@ class Downloader {
           continue
         }
 
+        drain(resp.stream)
         log.warn(`Download failed: HTTP Error ${resp.status} (attempt ${otherRetries + 1}/${maxOtherRetries})`)
         this.api.rateLimiter.updateAfterFailure(resp.status)
         otherRetries += 1
@@ -844,11 +994,22 @@ Main:
   -o, --root-path <dir>      Root path for downloaded files
   -d, --database-path <file> Path for the download-history JSON (default: redgifs-dl.json)
 
+Ordering:
+      --orders <list>        Comma-separated search orders, highest priority
+                             first — this drives the rank/number prefix on files.
+                             (default: top,trending,recent,best,latest)
+                             e.g. --orders latest   or   --orders latest,top
+
 Performance:
   -c, --max-concurrency <n>  Maximum concurrent downloads (default: 50)
   -t, --timeout <sec>        Download timeout in seconds (default: 60)
   -r, --retries <n>          Retry attempts for failed downloads (default: 5)
       --quality <hd|sd>      Download quality (default: hd)
+
+Proxy (rotates across the pool to spread rate limits):
+      --proxy <url>          Proxy URL, repeatable. http/https, optional auth:
+                             --proxy http://user:pass@host:port  (repeat for more)
+      --proxy-file <file>    File with one proxy URL per line (# comments ok)
 
 Other:
       --dry-run              Don't download, just show what would be downloaded
@@ -870,6 +1031,9 @@ function parseCli(argv) {
       'max-concurrency': { type: 'string', short: 'c' },
       timeout: { type: 'string', short: 't' },
       retries: { type: 'string', short: 'r' },
+      orders: { type: 'string' },
+      proxy: { type: 'string', multiple: true },
+      'proxy-file': { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       'skip-history': { type: 'boolean', default: false },
       verbose: { type: 'boolean', default: false },
@@ -935,18 +1099,58 @@ async function main() {
     process.exit(2)
   }
 
+  // Collect proxies from --proxy (repeatable) and --proxy-file (one per line).
+  let proxyPool = null
+  const proxyUrls = [...(args.proxy || [])]
+  if (args['proxy-file']) {
+    try {
+      const text = await fs.readFile(args['proxy-file'], 'utf-8')
+      for (const line of text.split(/\r?\n/)) {
+        const l = line.trim()
+        if (l && !l.startsWith('#')) proxyUrls.push(l)
+      }
+    } catch (e) {
+      console.error(`${C.red}Could not read --proxy-file: ${e.message}${C.reset}`)
+      process.exit(2)
+    }
+  }
+  if (proxyUrls.length) {
+    try {
+      proxyPool = new ProxyPool(proxyUrls.map(parseProxy))
+    } catch (e) {
+      console.error(`${C.red}${e.message}${C.reset}`)
+      process.exit(2)
+    }
+  }
+
+  // --orders overrides the search-order priority list (first = ranks the files).
+  let searchOrders
+  if (args.orders) {
+    searchOrders = args.orders.split(',').map((s) => s.trim()).filter(Boolean)
+    if (!searchOrders.length) {
+      console.error(`${C.red}--orders needs at least one order name${C.reset}`)
+      process.exit(2)
+    }
+  }
+
   const config = makeConfig({
     rootPath: args['root-path'] || '',
     databasePath: args['database-path'] || 'redgifs-dl.json',
     maxConcurrentDownloads: args['max-concurrency'] ? parseInt(args['max-concurrency'], 10) : 50,
     downloadTimeout: args.timeout ? parseInt(args.timeout, 10) : 60,
     retryAttempts: args.retries ? parseInt(args.retries, 10) : 5,
-    quality: args.quality
+    quality: args.quality,
+    proxyPool,
+    ...(searchOrders ? { searchOrders } : {})
   })
 
   console.log(`${C.bold}${C.cyan}RedGifs Downloader v${VERSION}${C.reset}`)
   console.log(`${C.yellow}Super-fast, concurrent downloader for RedGifs content${C.reset}`)
-  console.log(`${C.dim}Running on Node ${process.version} — ${process.platform} ${process.arch}${C.reset}\n`)
+  console.log(`${C.dim}Running on Node ${process.version} — ${process.platform} ${process.arch}${C.reset}`)
+  if (proxyPool) {
+    console.log(`${C.dim}Proxy pool: ${proxyPool.size} ${proxyPool.size === 1 ? 'proxy' : 'proxies'} (rotating)${C.reset}`)
+  }
+  console.log(`${C.dim}Search orders: ${config.searchOrders.join(', ')}${C.reset}\n`)
 
   const history = new HistoryStore(config.databasePath)
   await history.load()
