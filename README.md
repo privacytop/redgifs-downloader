@@ -1,174 +1,158 @@
 # RedGifs Downloader
 
 ![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.7%2B-brightgreen.svg)
+![Node](https://img.shields.io/badge/node-18%2B-brightgreen.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-A super-fast, intelligent downloader for RedGifs content with automatic rate limit handling and ranked file organization.
+Fast, resumable downloader for RedGifs content — with adaptive rate‑limit handling, proxy rotation, and ranked file organization.
 
-## Features
+Two ways to use it:
 
-- **Smart Ranking System**: Files are named with rank prefixes so they'll sort by popularity
-- **Adaptive Speed**: Automatically optimizes concurrency and request rates
-- **Complete Downloads**: Never skips content due to rate limits, will patiently wait and retry
-- **Cross-Platform**: Works on Windows, macOS, and Linux
-- **Multiple Search Orders**: Gets more content by combining "top", "trending", "recent", etc.
-- **Beautiful Progress Display**: Clean interface with rich progress bars (when Rich is installed)
-- **Batch Processing**: Download multiple users with a single command
-- **Database Tracking**: Maintains history to avoid duplicate downloads and preserve rankings
-
-## Installation
-
-1. Run the installer:
-   ```
-   python install.py
-   ```
-   - You will be prompted to use a virtual environment (recommended).
-   - Dependencies will be installed automatically.
-   - The latest version will be downloaded from GitHub.
-
-2. To activate the venv (if chosen):
-   - **Windows:**
-     ```
-     venv\Scripts\activate
-     ```
-   - **Linux/Mac:**
-     ```
-     source venv/bin/activate
-     ```
-
-## Quick Start
-
-```bash
-# Download a single user's content
-python redgifs_dl.py -u username
-
-# Download from multiple users
-python redgifs_dl.py -b "user1,user2,user3"
-
-# Use a text file with usernames (one per line)
-python redgifs_dl.py -b users.txt
-
-# Preview what would be downloaded without actually downloading
-python redgifs_dl.py -u username --dry-run
-```
-
-## Command Line Options
-
-```
-Usage: redgifs_dl.py [OPTIONS]
-
-Options:
-  -u, --username USERNAME     Username or profile URL to download
-  -b, --batch BATCH           Path to a file with usernames, or comma-separated list
-  -o, --root-path PATH        Root path for downloaded files
-  -d, --database-path PATH    Path for the download history database
-  -c, --max-concurrency N     Maximum number of concurrent downloads (default: auto)
-  -t, --timeout SECONDS       Download timeout in seconds (default: 60)
-  -r, --retries COUNT         Number of retry attempts for failed downloads (default: 5)
-  --quality [hd|sd]           Download quality: hd or sd (default: hd)
-  --dry-run                   Don't download files, just show what would be downloaded
-  --skip-history              Download files even if they are in the history
-  --verbose                   Enable verbose logging
-  --version                   Show version and exit
-```
-
-## File Organization
-
-Files are downloaded with a numbered prefix that represents their ranking:
-
-```
-001_example_video.mp4  # Top ranked video
-002_another_video.mp4  # Second highest ranked video
-...
-```
-
-This numbering system allows you to easily see the most popular content first when sorting by filename.
-
-## How It Works
-
-RedGifs Downloader uses several advanced techniques:
-
-1. **Adaptive Concurrency**: Automatically adjusts how many downloads run simultaneously based on performance and API response
-2. **Token Bucket Algorithm**: Smooths out request rates to avoid triggering rate limits
-3. **Intelligent Backoff**: When rate limited, respects the server's exact delay requirements
-4. **Multiple Search Orders**: Fetches content using different sort methods to maximize the number of unique files
-5. **Database Tracking**: Remembers what's been downloaded and preserves ranking information
-
-## Requirements
-
-- Python 3.7+
-- HTTPX library (`pip install httpx`)
-- Optional: Rich library for enhanced display (`pip install rich`)
-
-## Troubleshooting
-
-### Rate Limiting
-
-The downloader intelligently handles rate limits by:
-- Parsing the exact delay time provided by the RedGifs API
-- Waiting precisely the required time before retrying
-- Never giving up on downloads due to rate limiting
-
-If you see rate limit messages, don't worry - the script will automatically wait and retry.
-
-### Slow Downloads
-
-If downloads seem slow:
-1. Check your internet connection
-2. Be patient during rate limit periods (the script will automatically retry)
-3. Reduce concurrency with `-c 5` if you're experiencing network issues
-
-### Database Issues
-
-If you need to start fresh:
-1. Delete or rename the database file (`redgifs_dl.db` by default)
-2. Run the script again to create a new database
-
-## Advanced Usage
-
-### Custom Root Directory
-
-```bash
-python redgifs_dl.py -u username -o "/path/to/downloads"
-```
-
-### Custom Database Path
-
-```bash
-python redgifs_dl.py -u username -d "/path/to/database.db"
-```
-
-### Re-download All Content
-
-```bash
-python redgifs_dl.py -u username --skip-history
-```
-
-### High-Speed Mode (for fast connections)
-
-```bash
-python redgifs_dl.py -u username -c 20
-```
-
-### Installing Dependencies
-
-If you encounter dependency errors, install all required packages:
-
-```bash
-pip install httpx rich
-```
-
-## License
-
-MIT License
-
-## Author
-
-Created by privacytop on 2023-03-23
+| | Best for | Needs |
+|---|---|---|
+| **CLI** (`redgifs-dl.mjs`) | Quick, scriptable, headless bulk downloads | Just **Node 18+** — one file, zero `npm install` |
+| **Desktop app** (`desktop/`) | Browsing, search, likes/collections, a nice UI | Node + npm (run from source) or a prebuilt binary |
 
 ---
 
-## Legal Disclaimer
+## CLI — one file, no install
 
-This tool is provided for educational purposes only. Users are responsible for ensuring they comply with RedGifs' terms of service and all applicable laws when using this software.
+The whole downloader is a single self‑contained file. **No `git clone`, no `npm install`.** If you have Node 18 or newer, download the one file and run it.
+
+**macOS / Linux:**
+
+```bash
+curl -O https://raw.githubusercontent.com/privacytop/redgifs-downloader/main/redgifs-dl.mjs
+node redgifs-dl.mjs -u <username>
+```
+
+**Windows (PowerShell):**
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/privacytop/redgifs-downloader/main/redgifs-dl.mjs -OutFile redgifs-dl.mjs
+node redgifs-dl.mjs -u <username>
+```
+
+**Windows (cmd.exe):**
+
+```bat
+curl.exe -O https://raw.githubusercontent.com/privacytop/redgifs-downloader/main/redgifs-dl.mjs
+node redgifs-dl.mjs -u <username>
+```
+
+That's it. It uses only Node built‑ins (no dependencies to install). Re‑run the same command any time to resume — already‑downloaded gifs are skipped.
+
+> On Windows, use `curl.exe` (not bare `curl`) — in PowerShell `curl` is an alias for `Invoke-WebRequest` and won't accept `-O`. Or just download the raw file in your browser and `node redgifs-dl.mjs` from that folder.
+
+> Don't have Node? Install it from [nodejs.org](https://nodejs.org) (v18+), or via your package manager (`brew install node`, `apt install nodejs`, `winget install OpenJS.NodeJS`).
+
+### Examples
+
+```bash
+# a single creator
+node redgifs-dl.mjs -u somecreator
+
+# a creator's profile URL works too
+node redgifs-dl.mjs -u https://www.redgifs.com/users/somecreator
+
+# many creators at once (comma list or a file with one name per line)
+node redgifs-dl.mjs -b alice,bob,carol
+node redgifs-dl.mjs -b creators.txt
+
+# save somewhere specific
+node redgifs-dl.mjs -u somecreator -o ~/Videos/redgifs
+
+# preview what would download, without saving anything
+node redgifs-dl.mjs -u somecreator --dry-run
+
+# number files by newest instead of most‑popular
+node redgifs-dl.mjs -u somecreator --orders latest
+
+# route through rotating proxies to spread out rate limits
+node redgifs-dl.mjs -u somecreator \
+  --proxy http://user:pass@host1:8080 \
+  --proxy http://user:pass@host2:8080
+node redgifs-dl.mjs -u somecreator --proxy-file proxies.txt
+```
+
+### Options
+
+```
+Main:
+  -u, --username <user>      Username or profile URL to download
+  -b, --batch <file|list>    Path to a file with usernames, or comma-separated list
+  -o, --root-path <dir>      Root path for downloaded files
+  -d, --database-path <file> Path for the download-history JSON (default: redgifs-dl.json)
+
+Ordering:
+      --orders <list>        Comma-separated search orders, highest priority first —
+                             this drives the rank/number prefix on files.
+                             (default: top,trending,recent,best,latest)
+                             e.g. --orders latest   or   --orders latest,top
+
+Performance:
+  -c, --max-concurrency <n>  Maximum concurrent downloads (default: 50)
+  -t, --timeout <sec>        Download timeout in seconds (default: 60)
+  -r, --retries <n>          Retry attempts for failed downloads (default: 5)
+      --quality <hd|sd>      Download quality (default: hd)
+
+Proxy (rotates across the pool to spread rate limits):
+      --proxy <url>          Proxy URL, repeatable. http/https, optional auth:
+                             --proxy http://user:pass@host:port  (repeat for more)
+      --proxy-file <file>    File with one proxy URL per line (# comments ok)
+
+Other:
+      --dry-run              Don't download, just show what would be downloaded
+      --skip-history         Download files even if they are in the history
+      --verbose              Enable verbose (debug) logging
+      --version              Print version and exit
+  -h, --help                 Show this help
+```
+
+### How it works
+
+- **Ranked filenames** — files are prefixed with a zero‑padded rank (e.g. `007_Abc.mp4`) so your file manager sorts them by the chosen order. The **first** order in `--orders` decides the ranking; the others just add any gifs the first missed. So `--orders latest` numbers newest‑first, the default `top,...` numbers most‑popular‑first.
+- **Complete by design** — on a 429 it reads the server's requested delay and waits it out, then retries; it won't silently skip content. Concurrency and request rate adapt to how the API is responding.
+- **Resumable** — a small JSON history (`redgifs-dl.json` by default) records what's been fetched, so re‑runs skip existing files. If a later run finds a gif at a *better* rank, it renames the existing file instead of re‑downloading. Use `--skip-history` to force re‑download.
+- **Proxies** — supplied proxies are used round‑robin, one per request, which spreads load across IPs and eases per‑IP rate limits. Supports `http`/`https` proxies with optional basic auth (HTTP‑CONNECT tunneling for the HTTPS API).
+
+> The CLI downloads a creator's **public** gifs (no login needed). Liked videos and private collections live behind your account — use the desktop app for those.
+
+---
+
+## Desktop app — the GUI
+
+A full RedGifs client (Electron + React): browse For‑You / Discover / niches, follow creators, view and manage your collections and likes, an immersive YouTube‑Shorts‑style player, an offline library indexer with search/sort, blocked‑tag filtering, and in‑app login (with silent token refresh so you're not re‑logging‑in every hour).
+
+### Run from source
+
+```bash
+git clone https://github.com/privacytop/redgifs-downloader
+cd redgifs-downloader/desktop
+npm install
+npm run dev        # hot-reload dev build
+# or
+npm run build      # production bundle
+```
+
+Requires Node + npm. First `npm install` compiles a native SQLite module for your platform automatically.
+
+### Prebuilt binary
+
+If you'd rather not build it yourself, grab a packaged build from the repository's **[Releases](https://github.com/privacytop/redgifs-downloader/releases)** page when one is published for your OS, and just run it.
+
+---
+
+## Requirements
+
+- **CLI:** Node.js **18+** (for built‑in `fetch`). Nothing else.
+- **Desktop app:** Node.js + npm to run from source, or a prebuilt binary.
+
+## Notes
+
+- For personal use. Respect creators and RedGifs' terms of service.
+- Content is adult; you must be of legal age in your jurisdiction.
+
+## License
+
+MIT
