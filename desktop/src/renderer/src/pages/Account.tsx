@@ -3,20 +3,25 @@ import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNotify } from '../context/notify'
 import { formatCount } from '../lib/format'
+import { readCache, writeCache } from '../lib/cache'
 import type { UserProfile } from '@shared/types'
 
 /** Account page — profile header card, blocked-tags editor, sign out. Requires auth. */
 export default function Account(): JSX.Element {
   const notify = useNotify()
   const [authed, setAuthed] = useState<boolean | null>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
+  // Paint the last-known profile instantly, then revalidate.
+  const [profile, setProfile] = useState<UserProfile | null>(() => readCache<UserProfile>('me'))
   const [tag, setTag] = useState('')
   const [adding, setAdding] = useState(false)
 
   const refetch = (): void => {
     window.api
       .getProfile()
-      .then((p) => setProfile(p))
+      .then((p) => {
+        setProfile(p)
+        writeCache('me', p)
+      })
       .catch((e) => notify('Couldn’t load profile: ' + e.message, 'error'))
   }
 
@@ -31,7 +36,10 @@ export default function Account(): JSX.Element {
           window.api
             .getProfile()
             .then((p) => {
-              if (alive) setProfile(p)
+              if (alive) {
+                setProfile(p)
+                writeCache('me', p)
+              }
             })
             .catch((e) => {
               if (alive) notify('Couldn’t load profile: ' + e.message, 'error')

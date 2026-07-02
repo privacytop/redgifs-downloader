@@ -4,6 +4,7 @@ import EmptyState from '../components/EmptyState'
 import { useNav } from '../context/nav'
 import { useNotify } from '../context/notify'
 import { formatCount } from '../lib/format'
+import { readCache, writeCache } from '../lib/cache'
 import type { UserResult } from '@shared/types'
 
 /** Creators the signed-in user follows. Paginated grid of creator cards. */
@@ -12,7 +13,7 @@ export default function Following(): JSX.Element {
   const notify = useNotify()
 
   const [authed, setAuthed] = useState<boolean | null>(null)
-  const [creators, setCreators] = useState<UserResult[]>([])
+  const [creators, setCreators] = useState<UserResult[]>(() => readCache<UserResult[]>('following') ?? [])
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
