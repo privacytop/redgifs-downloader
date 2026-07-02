@@ -34,6 +34,10 @@ function loadFollows(): Promise<Set<string>> {
   return followsPromise
 }
 
+// Session-local set of gif ids the user has liked, so the heart stays lit when
+// scrolling away and back (feeds don't return per-gif like state).
+const likedIds = new Set<string>()
+
 /**
  * Full-screen immersive video player. Wheel + Arrow up/down move between clips
  * (debounced); clicking the video toggles play/pause; a control bar exposes
@@ -122,11 +126,18 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   // Reset per-clip state (niche vote, like, playback, popover) when the clip changes.
   useEffect(() => {
     setNicheVote(null)
-    setLiked(false)
-    setPlaying(true)
+    setLiked(current ? likedIds.has(current.id) : false)
     setCurrentTime(0)
     setDuration(0)
     setCollectionOpen(false)
+    // React's autoPlay attribute is unreliable on the first mount and across
+    // remounts, so drive play() imperatively for every clip (incl. the first).
+    const v = videoRef.current
+    if (v) {
+      v.muted = muted
+      v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index])
 
   // --- load the follows set once, then reflect the current creator ---------
@@ -293,11 +304,15 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     if (!current) return
     const next = !liked
     setLiked(next)
+    if (next) likedIds.add(current.id)
+    else likedIds.delete(current.id)
     try {
       if (next) await window.api.likeGif(current.id)
       else await window.api.unlikeGif(current.id)
     } catch (e) {
       setLiked(!next)
+      if (next) likedIds.delete(current.id)
+      else likedIds.add(current.id)
       notify((next ? 'Like' : 'Unlike') + ' failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     }
   }, [current, liked, notify])
