@@ -66,6 +66,23 @@ export class Downloader {
     return task
   }
 
+  // Download an already-resolved list of contents (e.g. the player "Save"),
+  // skipping the API resolve step. Uses the same worker pool + events.
+  startContents(contents: Content[], username?: string): DownloadTask {
+    const settings = this.deps.storage.getSettings()
+    const request: DownloadRequest = { type: 'single', username, contentIds: contents.map((c) => c.id) }
+    const task: DownloadTask = {
+      id: randomUUID(), type: 'single', username: username ?? '',
+      status: 'queued', progress: 0, totalItems: 0, downloaded: 0, failed: 0, skipped: 0,
+      currentItem: '', downloadPath: this.pathFor(request, settings), startTime: Date.now()
+    }
+    this.tasks.set(task.id, task)
+    this.requests.set(task.id, request)
+    this.aborters.set(task.id, new AbortController())
+    void this.run(task, request, settings, contents)
+    return task
+  }
+
   pause(id: string): void {
     const t = this.tasks.get(id)
     if (t && t.status === 'downloading') { this.setStatus(t, 'paused'); this.abort(id) }
@@ -142,16 +159,20 @@ export class Downloader {
     return [...seen.values()]
   }
 
-  private async run(task: DownloadTask, req: DownloadRequest, s: Settings): Promise<void> {
+  private async run(task: DownloadTask, req: DownloadRequest, s: Settings, preresolved?: Content[]): Promise<void> {
     this.setStatus(task, 'downloading')
     let content: Content[]
-    try {
-      content = await this.resolveContent(req, s)
-    } catch (e) {
-      task.error = (e as Error).message
-      this.setStatus(task, 'failed')
-      task.endTime = Date.now()
-      return
+    if (preresolved) {
+      content = preresolved
+    } else {
+      try {
+        content = await this.resolveContent(req, s)
+      } catch (e) {
+        task.error = (e as Error).message
+        this.setStatus(task, 'failed')
+        task.endTime = Date.now()
+        return
+      }
     }
     task.totalItems = content.length
     const quality: Quality = req.quality ?? s.preferredQuality

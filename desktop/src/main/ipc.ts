@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { EVT, IPC } from '../shared/ipc'
-import type { DownloadTask } from '../shared/types'
+import type { Content, DownloadTask } from '../shared/types'
 import { RedgifsApi } from './api'
 import { AuthManager } from './auth'
 import { Downloader } from './downloader'
@@ -32,7 +32,31 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.getCollections, (_e, u?: string) => api.getCollections(u))
   ipcMain.handle(IPC.getCollectionContent, (_e, id: string, p: number) => api.getCollectionContent(id, p))
 
+  ipcMain.handle(IPC.getForYou, (_e, p: number) => api.getForYou(p))
+  ipcMain.handle(IPC.searchGifs, (_e, opts) => api.searchGifs(opts))
+  ipcMain.handle(IPC.searchCreators, (_e, opts) => api.searchCreators(opts))
+  ipcMain.handle(IPC.creatorPreviews, (_e, opts) => api.creatorPreviews(opts))
+  ipcMain.handle(IPC.getCreatorContent, (_e, u: string, opts) => api.getCreatorContent(u, opts))
+  ipcMain.handle(IPC.getCreatorTags, (_e, u: string) => api.getCreatorTags(u))
+  ipcMain.handle(IPC.getUser, (_e, u: string) => api.getUser(u))
+  ipcMain.handle(IPC.getMyContent, (_e, opts) => api.getMyContent(opts))
+  ipcMain.handle(IPC.getFollowing, (_e, p: number) => api.getFollowing(p))
+  ipcMain.handle(IPC.getFollowers, (_e, p: number) => api.getFollowers(p))
+
+  ipcMain.handle(IPC.getNichesTrending, () => api.getNichesTrending())
+  ipcMain.handle(IPC.getNicheCategories, () => api.getNicheCategories())
+  ipcMain.handle(IPC.getMyNiches, () => api.getMyNiches())
+  ipcMain.handle(IPC.getFollowingNiches, () => api.getFollowingNiches())
+  ipcMain.handle(IPC.getRelatedNiches, (_e, id: string) => api.getRelatedNiches(id))
+  ipcMain.handle(IPC.getNichePreviews, (_e, opts) => api.getNichePreviews(opts))
+  ipcMain.handle(IPC.nicheFeedback, (_e, nicheId: string, gifId: string, state: 'up' | 'down') =>
+    api.nicheFeedback(nicheId, gifId, state))
+
+  ipcMain.handle(IPC.updatePreferences, (_e, ops) => api.updatePreferences(ops))
+
   ipcMain.handle(IPC.downloadStart, (_e, req) => downloader.start(req))
+  ipcMain.handle(IPC.downloadContents, (_e, contents: Content[], username?: string) =>
+    downloader.startContents(contents, username))
   ipcMain.handle(IPC.downloadList, () => downloader.list())
   ipcMain.handle(IPC.downloadPause, (_e, id: string) => downloader.pause(id))
   ipcMain.handle(IPC.downloadResume, (_e, id: string) => downloader.resume(id))

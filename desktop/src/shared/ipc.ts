@@ -5,10 +5,12 @@
 import type {
   AuthStatus,
   Collection,
+  Content,
   ContentResponse,
   DownloadRecord,
   DownloadRequest,
   DownloadTask,
+  Niche,
   Settings,
   Statistics,
   ToastPayload,
@@ -29,7 +31,29 @@ export const IPC = {
   getCollectionContent: 'api:getCollectionContent',
   getLikes: 'api:getLikes',
 
+  getForYou: 'api:getForYou',
+  searchGifs: 'api:searchGifs',
+  searchCreators: 'api:searchCreators',
+  creatorPreviews: 'api:creatorPreviews',
+  getCreatorContent: 'api:getCreatorContent',
+  getCreatorTags: 'api:getCreatorTags',
+  getUser: 'api:getUser',
+  getMyContent: 'api:getMyContent',
+  getFollowing: 'api:getFollowing',
+  getFollowers: 'api:getFollowers',
+
+  getNichesTrending: 'api:getNichesTrending',
+  getNicheCategories: 'api:getNicheCategories',
+  getMyNiches: 'api:getMyNiches',
+  getFollowingNiches: 'api:getFollowingNiches',
+  getRelatedNiches: 'api:getRelatedNiches',
+  getNichePreviews: 'api:getNichePreviews',
+  nicheFeedback: 'api:nicheFeedback',
+
+  updatePreferences: 'api:updatePreferences',
+
   downloadStart: 'download:start',
+  downloadContents: 'download:contents',
   downloadList: 'download:list',
   downloadPause: 'download:pause',
   downloadResume: 'download:resume',
@@ -72,7 +96,29 @@ export interface RedgifsApi {
   getCollectionContent(collectionId: string, page: number): Promise<ContentResponse>
   getLikes(page: number): Promise<ContentResponse>
 
+  getForYou(page: number): Promise<ContentResponse>
+  searchGifs(opts: { type?: 'g' | 'i'; order?: string; page?: number; verified?: boolean; tags?: string }): Promise<ContentResponse>
+  searchCreators(opts: { order?: string; page?: number; verified?: boolean }): Promise<UserResult[]>
+  creatorPreviews(opts: { order?: string; page?: number; count?: number }): Promise<ContentResponse>
+  getCreatorContent(username: string, opts: { type?: 'g' | 'i'; order?: string; page?: number; tags?: string }): Promise<ContentResponse>
+  getCreatorTags(username: string): Promise<string[]>
+  getUser(username: string): Promise<UserProfile>
+  getMyContent(opts: { type?: 'g' | 'i' | 'all'; order?: string; page?: number }): Promise<ContentResponse>
+  getFollowing(page: number): Promise<UserResult[]>
+  getFollowers(page: number): Promise<UserResult[]>
+
+  getNichesTrending(): Promise<Niche[]>
+  getNicheCategories(): Promise<Niche[]>
+  getMyNiches(): Promise<Niche[]>
+  getFollowingNiches(): Promise<Niche[]>
+  getRelatedNiches(id: string): Promise<Niche[]>
+  getNichePreviews(opts: { order?: string; page?: number; count?: number }): Promise<Niche[]>
+  nicheFeedback(nicheId: string, gifId: string, state: 'up' | 'down'): Promise<void>
+
+  updatePreferences(ops: Array<{ op: string; path: string; value: unknown }>): Promise<void>
+
   startDownload(request: DownloadRequest): Promise<DownloadTask>
+  downloadContents(contents: Content[], username?: string): Promise<DownloadTask>
   listDownloads(): Promise<DownloadTask[]>
   pauseDownload(id: string): Promise<void>
   resumeDownload(id: string): Promise<void>

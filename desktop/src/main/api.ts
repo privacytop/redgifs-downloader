@@ -1,5 +1,5 @@
 import type {
-  Collection, Content, ContentResponse, UserProfile, UserResult
+  Collection, Content, ContentResponse, Niche, UserProfile, UserResult
 } from '../shared/types'
 import { RateLimiter } from './ratelimit'
 import { decodeJwt } from './jwt'
@@ -25,7 +25,10 @@ export function toContent(g: RawGif): Content {
     duration: g.duration ?? 0, width: g.width ?? 0, height: g.height ?? 0,
     views: g.views ?? 0, likes: g.likes ?? 0, username: g.userName ?? '',
     createDate: g.createDate ?? 0, hasAudio: !!g.hasAudio,
-    urls: { hd: g.urls?.hd, sd: g.urls?.sd, thumbnail: g.urls?.thumbnail, poster: g.urls?.poster },
+    urls: {
+      hd: g.urls?.hd, sd: g.urls?.sd, thumbnail: g.urls?.thumbnail,
+      poster: g.urls?.poster, silent: g.urls?.silent
+    },
     tags: g.tags ?? [], niches: g.niches ?? []
   }
 }
@@ -64,7 +67,7 @@ export class RedgifsApi {
     return this.tempToken
   }
 
-  private async request<T>(method: string, path: string, params?: Record<string, string>, auth = true): Promise<T> {
+  private async request<T>(method: string, path: string, params?: Record<string, string>, auth = true, body?: unknown): Promise<T> {
     // `path` may be an absolute URL (e.g. the /v1/me endpoint lives on a different
     // API version than the v2 BASE) or a v2-relative path.
     const url = new URL(path.startsWith('http') ? path : BASE + path)
@@ -73,8 +76,15 @@ export class RedgifsApi {
       await this.rl.wait()
       const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'RedGifs-Downloader/4.0' }
       if (auth) headers.Authorization = `Bearer ${await this.token()}`
-      const resp = await fetch(url, { method, headers })
+      const init: RequestInit = { method, headers }
+      if (body !== undefined) {
+        headers['Content-Type'] = 'application/json'
+        init.body = JSON.stringify(body)
+      }
+      const resp = await fetch(url, init)
       if (resp.status === 200) return (await resp.json()) as T
+      // POST/PATCH mutation endpoints often reply 201/204 with an empty body.
+      if (resp.status === 201 || resp.status === 204) return undefined as T
       if (resp.status === 429) {
         const body = await resp.json().catch(() => ({})) as { error?: { delay?: number } }
         this.rl.note429((body.error?.delay ?? 60) * 1000)
@@ -89,11 +99,7 @@ export class RedgifsApi {
 
   async searchUsers(query: string): Promise<UserResult[]> {
     const data = await this.request<{ users: any[] }>('GET', '/users/search', { search_text: query, count: '20' })
-    return (data.users ?? []).map((u) => ({
-      username: u.username, name: u.name ?? '', profileImageUrl: u.profileImageUrl ?? '',
-      profileUrl: u.profileUrl ?? '', followers: u.followers ?? 0, gifs: u.gifs ?? 0,
-      views: u.views ?? 0, verified: !!u.verified
-    }))
+    return (data.users ?? []).map(toUserResult)
   }
 
   async getUserContent(username: string, order: string, page: number): Promise<ContentResponse> {
@@ -135,5 +141,145 @@ export class RedgifsApi {
   async getGif(id: string): Promise<Content> {
     const data = await this.request<{ gif: RawGif }>('GET', `/gifs/${encodeURIComponent(id)}`)
     return toContent(data.gif)
+  }
+
+  // ---- feeds ----
+
+  async getForYou(page: number): Promise<ContentResponse> {
+    return toContentResponse(await this.request<RawContentResponse>('GET', '/feeds/for-you',
+      { page: String(page), count: '80' }))
+  }
+
+  // ---- search ----
+
+  async searchGifs(opts: { type?: 'g' | 'i'; order?: string; page?: number; verified?: boolean; tags?: string }): Promise<ContentResponse> {
+    const params: Record<string, string> = { count: '80' }
+    if (opts.type) params.type = opts.type
+    if (opts.order) params.order = opts.order
+    if (opts.page) params.page = String(opts.page)
+    if (opts.verified) params.verified = 'y'
+    if (opts.tags) params.search_text = opts.tags
+    return toContentResponse(await this.request<RawContentResponse>('GET', '/gifs/search', params))
+  }
+
+  async searchCreators(opts: { order?: string; page?: number; verified?: boolean }): Promise<UserResult[]> {
+    const params: Record<string, string> = { count: '80' }
+    if (opts.order) params.order = opts.order
+    if (opts.page) params.page = String(opts.page)
+    if (opts.verified) params.verified = 'y'
+    const data = await this.request<{ users?: any[]; creators?: any[] }>('GET', '/creators/search', params)
+    return (data.users ?? data.creators ?? []).map(toUserResult)
+  }
+
+  async creatorPreviews(opts: { order?: string; page?: number; count?: number }): Promise<ContentResponse> {
+    const params: Record<string, string> = { count: String(opts.count ?? 80) }
+    if (opts.order) params.order = opts.order
+    if (opts.page) params.page = String(opts.page)
+    return toContentResponse(await this.request<RawContentResponse>('GET', '/creators/search/previews', params))
+  }
+
+  async getCreatorContent(username: string, opts: { type?: 'g' | 'i'; order?: string; page?: number; tags?: string }): Promise<ContentResponse> {
+    const params: Record<string, string> = { count: '80' }
+    if (opts.type) params.type = opts.type
+    if (opts.order) params.order = opts.order
+    if (opts.page) params.page = String(opts.page)
+    if (opts.tags) params.search_text = opts.tags
+    return toContentResponse(await this.request<RawContentResponse>('GET',
+      `/users/${encodeURIComponent(username)}/search`, params))
+  }
+
+  async getCreatorTags(username: string): Promise<string[]> {
+    const data = await this.request<{ tags?: string[] } | string[]>('GET',
+      `/creators/${encodeURIComponent(username)}/tags`)
+    if (Array.isArray(data)) return data
+    return data?.tags ?? []
+  }
+
+  async getUser(username: string): Promise<UserProfile> {
+    const u = await this.request<any>('GET', `https://api.redgifs.com/v1/users/${encodeURIComponent(username)}`)
+    return {
+      username: u?.username ?? username, name: u?.name ?? '', profileUrl: u?.url ?? u?.profileUrl ?? '',
+      profilePic: u?.profileImageUrl ?? '', followers: u?.followers ?? 0, following: u?.following ?? 0,
+      totalGifs: u?.totalGifs ?? u?.gifs ?? 0, views: u?.views ?? 0, likes: u?.likes ?? 0
+    }
+  }
+
+  // ---- authenticated user ----
+
+  async getMyContent(opts: { type?: 'g' | 'i' | 'all'; order?: string; page?: number }): Promise<ContentResponse> {
+    const params: Record<string, string> = { count: '80' }
+    if (opts.type) params.type = opts.type
+    if (opts.order) params.order = opts.order
+    if (opts.page) params.page = String(opts.page)
+    return toContentResponse(await this.request<RawContentResponse>('GET', '/me/content', params))
+  }
+
+  async getFollowing(page: number): Promise<UserResult[]> {
+    const data = await this.request<{ users?: any[]; creators?: any[] }>('GET', '/me/following',
+      { page: String(page), count: '80' })
+    return (data.users ?? data.creators ?? []).map(toUserResult)
+  }
+
+  async getFollowers(page: number): Promise<UserResult[]> {
+    const data = await this.request<{ users?: any[]; creators?: any[] }>('GET', '/me/followers',
+      { page: String(page), count: '80' })
+    return (data.users ?? data.creators ?? []).map(toUserResult)
+  }
+
+  // ---- niches ----
+
+  async getNichesTrending(): Promise<Niche[]> {
+    return this.niches('GET', '/niches/trending/search')
+  }
+  async getNicheCategories(): Promise<Niche[]> {
+    return this.niches('GET', '/niches/categories')
+  }
+  async getMyNiches(): Promise<Niche[]> {
+    return this.niches('GET', '/niches/my')
+  }
+  async getFollowingNiches(): Promise<Niche[]> {
+    return this.niches('GET', '/niches/following')
+  }
+  async getRelatedNiches(id: string): Promise<Niche[]> {
+    return this.niches('GET', `/niches/${encodeURIComponent(id)}/related`)
+  }
+  async getNichePreviews(opts: { order?: string; page?: number; count?: number }): Promise<Niche[]> {
+    const params: Record<string, string> = { count: String(opts.count ?? 80) }
+    if (opts.order) params.order = opts.order
+    if (opts.page) params.page = String(opts.page)
+    return this.niches('GET', '/niches/search/previews', params)
+  }
+
+  private async niches(method: string, path: string, params?: Record<string, string>): Promise<Niche[]> {
+    const data = await this.request<{ niches?: any[]; categories?: any[] } | any[]>(method, path, params)
+    const list = Array.isArray(data) ? data : (data?.niches ?? data?.categories ?? [])
+    return list.map(toNiche)
+  }
+
+  async nicheFeedback(nicheId: string, gifId: string, state: 'up' | 'down'): Promise<void> {
+    await this.request<void>('POST', `/niches/${encodeURIComponent(nicheId)}/feedback`,
+      undefined, true, { gif: gifId, state })
+  }
+
+  // ---- preferences ----
+
+  async updatePreferences(ops: Array<{ op: string; path: string; value: unknown }>): Promise<void> {
+    await this.request<void>('PATCH', 'https://api.redgifs.com/v1/me', undefined, true, { operations: ops })
+  }
+}
+
+function toUserResult(u: any): UserResult {
+  return {
+    username: u?.username ?? '', name: u?.name ?? '', profileImageUrl: u?.profileImageUrl ?? '',
+    profileUrl: u?.profileUrl ?? '', followers: u?.followers ?? 0, gifs: u?.gifs ?? 0,
+    views: u?.views ?? 0, verified: !!u?.verified
+  }
+}
+
+function toNiche(n: any): Niche {
+  return {
+    id: n?.id ?? '', name: n?.name ?? '', description: n?.description ?? '',
+    gifs: n?.gifs ?? 0, subscribers: n?.subscribers ?? 0,
+    thumbnail: n?.thumbnail ?? '', cover: n?.cover, owner: n?.owner
   }
 }
