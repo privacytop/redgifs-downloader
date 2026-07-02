@@ -45,7 +45,7 @@ export default function App(): JSX.Element {
         </nav>
         <div className="auth-box">
           <span className={`auth-dot ${auth.authenticated ? 'on' : ''}`} />
-          {auth.authenticated ? 'Logged in' : 'Not logged in'}
+          {auth.authenticated ? (auth.username ? `@${auth.username}` : 'Logged in') : 'Not logged in'}
           <button className="btn btn-sm" onClick={toggleAuth}>{auth.authenticated ? 'Logout' : 'Login'}</button>
         </div>
       </aside>

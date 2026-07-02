@@ -5,9 +5,10 @@ import type { Storage } from './storage'
 import { isUserToken } from './jwt'
 
 const PARTITION = 'persist:redgifs'
-// Load the site root (login is a modal there); token capture happens on the
-// first authed api.redgifs.com request after the user logs in, regardless of route.
-const LOGIN_URL = 'https://www.redgifs.com/'
+// The SPA serves /login as a client route that opens the login modal directly
+// (it falls back to the app shell if the route is unknown, so this is safe).
+// Token capture happens on the first authed api.redgifs.com request after login.
+const LOGIN_URL = 'https://www.redgifs.com/login'
 
 export interface AuthDeps {
   api: RedgifsApi
@@ -20,8 +21,20 @@ export class AuthManager {
 
   constructor(private deps: AuthDeps) {}
 
-  status(): AuthStatus {
-    return { authenticated: this.deps.api.isAuthenticated() }
+  async status(): Promise<AuthStatus> {
+    if (!this.deps.api.isAuthenticated()) return { authenticated: false }
+    return { authenticated: true, username: await this.fetchUsername() }
+  }
+
+  // Best-effort: resolve the logged-in username via /me. Never throws; returns
+  // undefined on failure (e.g. transient network error or an expired token).
+  private async fetchUsername(): Promise<string | undefined> {
+    try {
+      const profile = await this.deps.api.getProfile()
+      return profile.username || undefined
+    } catch {
+      return undefined
+    }
   }
 
   /**
@@ -37,20 +50,25 @@ export class AuthManager {
       const ses = session.fromPartition(PARTITION)
       let settled = false
 
-      const finish = (token?: string): void => {
+      const finish = async (token?: string): Promise<void> => {
         if (settled) return
         settled = true
         // Detach the header listener.
         ses.webRequest.onBeforeSendHeaders(null)
-        if (token) {
-          this.deps.api.setUserToken(token)
-          this.deps.storage.setUserToken(token)
-        }
-        const status: AuthStatus = { authenticated: !!token }
-        this.deps.onChange(status)
+        // Close the window immediately so the user isn't left staring at it while
+        // we resolve the profile.
         const w = this.win
         this.win = null
         if (w && !w.isDestroyed()) w.close()
+
+        let username: string | undefined
+        if (token) {
+          this.deps.api.setUserToken(token)
+          this.deps.storage.setUserToken(token)
+          username = await this.fetchUsername()
+        }
+        const status: AuthStatus = { authenticated: !!token, username }
+        this.deps.onChange(status)
         resolve(status)
       }
 
