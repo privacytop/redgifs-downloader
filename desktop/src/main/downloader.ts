@@ -73,6 +73,9 @@ export class Downloader {
     const t = this.tasks.get(id)
     if (!t || t.status !== 'paused') return
     this.aborters.set(id, new AbortController())
+    // TODO(phase2): persist the original DownloadRequest per task and reuse it here.
+    // Current rebuild only carries type+username, so collection/single resume is unsupported
+    // and user resume re-fetches all pages (hasDownloaded dedupe keeps results correct).
     const req = { type: t.type, username: t.username, quality: undefined } as DownloadRequest
     void this.run(t, req, this.deps.storage.getSettings())
   }
@@ -168,10 +171,11 @@ export class Downloader {
             await this.downloadOne(task, c, i + 1, quality, s, signal, req.searchOrders?.[0] ?? s.searchOrders[0] ?? '')
             task.downloaded++
           } catch {
+            if (signal.aborted) return
             task.failed++
           }
         }
-        task.progress = Math.round(((task.downloaded + task.failed + task.skipped) / task.totalItems) * 100)
+        task.progress = task.totalItems ? Math.round(((task.downloaded + task.failed + task.skipped) / task.totalItems) * 100) : 100
         this.deps.onProgress({ ...task })
       }
     }
@@ -195,19 +199,24 @@ export class Downloader {
     await this.rl.wait()
     const resp = await fetch(url, { signal, headers: { 'User-Agent': 'RedGifs-Downloader/4.0' } })
     if (!resp.ok || !resp.body) throw new Error(`download HTTP ${resp.status}`)
-    await new Promise<void>((resolve, reject) => {
-      const out = createWriteStream(tmpPath)
-      Readable.fromWeb(resp.body as any).pipe(out)
-      out.on('finish', resolve)
-      out.on('error', reject)
-    })
-    const size = (await stat(tmpPath)).size
-    await rename(tmpPath, finalPath).catch(async (e) => { await rm(tmpPath, { force: true }); throw e })
-    this.deps.storage.addRecord({
-      username: task.username || c.username, contentId: c.id, contentName: filename,
-      filePath: finalPath, fileSize: size, duration: c.duration, width: c.width, height: c.height,
-      hasAudio: c.hasAudio, downloadedAt: Date.now(), thumbnail: c.urls.thumbnail ?? '',
-      searchOrder: order, rank
-    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const out = createWriteStream(tmpPath)
+        Readable.fromWeb(resp.body as any).pipe(out)
+        out.on('finish', resolve)
+        out.on('error', reject)
+      })
+      const size = (await stat(tmpPath)).size
+      await rename(tmpPath, finalPath)
+      this.deps.storage.addRecord({
+        username: task.username || c.username, contentId: c.id, contentName: filename,
+        filePath: finalPath, fileSize: size, duration: c.duration, width: c.width, height: c.height,
+        hasAudio: c.hasAudio, downloadedAt: Date.now(), thumbnail: c.urls.thumbnail ?? '',
+        searchOrder: order, rank
+      })
+    } catch (e) {
+      await rm(tmpPath, { force: true })
+      throw e
+    }
   }
 }
