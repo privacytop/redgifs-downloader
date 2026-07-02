@@ -299,11 +299,13 @@ export class RedgifsApi {
 
   // Follow/unfollow live on the v1 API, keyed by username (not the v2 BASE).
   async followUser(username: string): Promise<void> {
-    await this.request<void>('PUT', `https://api.redgifs.com/v1/me/follows/${encodeURIComponent(username)}`)
+    await this.request<void>('PUT', `https://api.redgifs.com/v1/me/follows/${encodeURIComponent(username)}`,
+      undefined, true, { source: 'profile', source_id: null, position: 0 })
   }
 
   async unfollowUser(username: string): Promise<void> {
-    await this.request<void>('DELETE', `https://api.redgifs.com/v1/me/follows/${encodeURIComponent(username)}`)
+    await this.request<void>('DELETE', `https://api.redgifs.com/v1/me/follows/${encodeURIComponent(username)}`,
+      undefined, true, { source: 'profile', source_id: null, position: 0 })
   }
 
   // The follow-list response shape is unverified, so accept the plausible
