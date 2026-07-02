@@ -11,7 +11,7 @@
     "start": "electron-vite preview",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "test": "vitest run",
-    "test:main": "ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --config vitest.config.ts src/main/storage.test.ts",
+    "test:main": "ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --config vitest.main.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "dependencies": {
