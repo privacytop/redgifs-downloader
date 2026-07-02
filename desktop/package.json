@@ -3,6 +3,7 @@
   "version": "4.0.0",
   "description": "RedGifs Downloader — Electron + React desktop app",
   "author": "privacytop",
+  "homepage": "https://github.com/privacytop/redgifs-downloader",
   "license": "MIT",
   "main": "./out/main/index.js",
   "scripts": {
