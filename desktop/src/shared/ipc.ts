@@ -52,6 +52,12 @@ export const IPC = {
   getNichePreviews: 'api:getNichePreviews',
   nicheFeedback: 'api:nicheFeedback',
 
+  followUser: 'api:followUser',
+  unfollowUser: 'api:unfollowUser',
+  getFollows: 'api:getFollows',
+  addToCollection: 'api:addToCollection',
+  createCollection: 'api:createCollection',
+
   updatePreferences: 'api:updatePreferences',
 
   downloadStart: 'download:start',
@@ -118,6 +124,12 @@ export interface RedgifsApi {
   getRelatedNiches(id: string): Promise<Niche[]>
   getNichePreviews(opts: { order?: string; page?: number; count?: number }): Promise<Niche[]>
   nicheFeedback(nicheId: string, gifId: string, state: 'up' | 'down'): Promise<void>
+
+  followUser(username: string): Promise<void>
+  unfollowUser(username: string): Promise<void>
+  getFollows(): Promise<string[]>
+  addToCollection(folderId: string, gifId: string): Promise<void>
+  createCollection(name: string): Promise<void>
 
   updatePreferences(ops: Array<{ op: string; path: string; value: unknown }>): Promise<void>
 

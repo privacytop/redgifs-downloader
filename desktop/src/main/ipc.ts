@@ -54,6 +54,13 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.nicheFeedback, (_e, nicheId: string, gifId: string, state: 'up' | 'down') =>
     api.nicheFeedback(nicheId, gifId, state))
 
+  ipcMain.handle(IPC.followUser, (_e, u: string) => api.followUser(u))
+  ipcMain.handle(IPC.unfollowUser, (_e, u: string) => api.unfollowUser(u))
+  ipcMain.handle(IPC.getFollows, () => api.getFollows())
+  ipcMain.handle(IPC.addToCollection, (_e, folderId: string, gifId: string) =>
+    api.addToCollection(folderId, gifId))
+  ipcMain.handle(IPC.createCollection, (_e, name: string) => api.createCollection(name))
+
   ipcMain.handle(IPC.updatePreferences, (_e, ops) => api.updatePreferences(ops))
 
   ipcMain.handle(IPC.downloadStart, (_e, req) => downloader.start(req))
