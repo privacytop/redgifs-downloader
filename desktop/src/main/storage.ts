@@ -29,6 +29,8 @@ export interface Storage {
   searchCachedGifs(filter: CacheFilter): Content[]
   /** Collection ids known (from cached views) to contain this gif. */
   gifCollectionIds(gifId: string): string[]
+  /** Drop a cached membership row (e.g. after removing a gif from a collection). */
+  removeGifMembership(gifId: string, sourceType: string, sourceId: string): void
   close(): void
 }
 
@@ -265,6 +267,12 @@ export class SqliteStorage implements Storage {
       .prepare("SELECT source_id FROM gif_membership WHERE gif_id = ? AND source_type = 'collection'")
       .all(gifId) as { source_id: string }[]
     return rows.map((r) => r.source_id)
+  }
+
+  removeGifMembership(gifId: string, sourceType: string, sourceId: string): void {
+    this.db
+      .prepare('DELETE FROM gif_membership WHERE gif_id = ? AND source_type = ? AND source_id = ?')
+      .run(gifId, sourceType, sourceId)
   }
 
   close(): void {

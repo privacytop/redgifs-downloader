@@ -69,6 +69,11 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.getFollows, () => api.getFollows())
   ipcMain.handle(IPC.addToCollection, (_e, folderId: string, gifId: string) =>
     api.addToCollection(folderId, gifId))
+  ipcMain.handle(IPC.removeFromCollection, async (_e, folderId: string, gifId: string) => {
+    await api.removeFromCollection(folderId, gifId)
+    // Keep the local membership cache in sync so ✓ markers update immediately.
+    storage.removeGifMembership(gifId, 'collection', folderId)
+  })
   ipcMain.handle(IPC.createCollection, (_e, name: string) => api.createCollection(name))
 
   ipcMain.handle(IPC.updatePreferences, (_e, ops) => api.updatePreferences(ops))

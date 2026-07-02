@@ -41,6 +41,8 @@ const api: RedgifsApi = {
   unfollowUser: (username) => ipcRenderer.invoke(IPC.unfollowUser, username),
   getFollows: () => ipcRenderer.invoke(IPC.getFollows),
   addToCollection: (folderId, gifId) => ipcRenderer.invoke(IPC.addToCollection, folderId, gifId),
+  removeFromCollection: (folderId, gifId) =>
+    ipcRenderer.invoke(IPC.removeFromCollection, folderId, gifId),
   createCollection: (name) => ipcRenderer.invoke(IPC.createCollection, name),
 
   updatePreferences: (ops) => ipcRenderer.invoke(IPC.updatePreferences, ops),

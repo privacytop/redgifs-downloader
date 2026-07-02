@@ -56,6 +56,7 @@ export const IPC = {
   unfollowUser: 'api:unfollowUser',
   getFollows: 'api:getFollows',
   addToCollection: 'api:addToCollection',
+  removeFromCollection: 'api:removeFromCollection',
   createCollection: 'api:createCollection',
 
   updatePreferences: 'api:updatePreferences',
@@ -131,6 +132,7 @@ export interface RedgifsApi {
   unfollowUser(username: string): Promise<void>
   getFollows(): Promise<string[]>
   addToCollection(folderId: string, gifId: string): Promise<void>
+  removeFromCollection(folderId: string, gifId: string): Promise<void>
   createCollection(name: string): Promise<void>
 
   updatePreferences(ops: Array<{ op: string; path: string; value: unknown }>): Promise<void>

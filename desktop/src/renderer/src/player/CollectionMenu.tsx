@@ -167,6 +167,27 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
     }
   }
 
+  const remove = async (c: Collection): Promise<void> => {
+    if (busyId) return
+    setBusyId(c.id)
+    try {
+      await window.api.removeFromCollection(c.id, contentId)
+      setInIds((prev) => {
+        const next = new Set(prev)
+        next.delete(c.id)
+        return next
+      })
+      notify('Removed from ' + c.name, 'success')
+    } catch (e) {
+      notify('Remove failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // Clicking a row toggles membership: adds if absent, removes if already in.
+  const toggle = (c: Collection): void => void (inIds.has(c.id) ? remove(c) : add(c))
+
   const create = async (): Promise<void> => {
     const name = newName.trim()
     if (!name || saving) return
@@ -208,8 +229,8 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
             type="button"
             role="menuitem"
             style={rowStyle}
-            disabled={busyId !== null || inIds.has(c.id)}
-            onClick={() => void add(c)}
+            disabled={busyId !== null}
+            onClick={() => toggle(c)}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--bg)'
             }}
@@ -224,11 +245,11 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
                 )}
               </span>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {busyId === c.id ? 'Adding…' : c.name}
+                {busyId === c.id ? (inIds.has(c.id) ? 'Removing…' : 'Adding…') : c.name}
               </span>
             </span>
             {inIds.has(c.id) ? (
-              <span style={{ ...countStyle, color: 'var(--ok)' }} title="Already in this collection">
+              <span style={{ ...countStyle, color: 'var(--ok)' }} title="Click to remove from this collection">
                 ✓ in
               </span>
             ) : (
