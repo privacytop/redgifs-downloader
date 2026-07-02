@@ -53,6 +53,7 @@
     "asarUnpack": [
       "**/node_modules/better-sqlite3/**"
     ],
+    "npmRebuild": false,
     "win": {
       "target": [
         { "target": "nsis", "arch": ["x64"] },

@@ -19,7 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Pinned images: windows-2022 ships VS2022 (node-gyp recognises it;
+        # windows-latest is now VS2026 which breaks the bundled node-gyp).
+        os: [ubuntu-22.04, windows-2022]
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -32,6 +34,12 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: desktop/package-lock.json
+
+      # node-gyp compiles better-sqlite3 for Electron's ABI; Python 3.12+ drops
+      # distutils which node-gyp needs, so pin 3.11.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Install dependencies
         run: npm ci
