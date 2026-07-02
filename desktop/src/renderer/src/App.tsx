@@ -1,24 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import Downloads from './pages/Downloads'
 import SettingsPage from './pages/SettingsPage'
-import Stub from './pages/Stub'
+import ForYou from './pages/ForYou'
+import Discover from './pages/Discover'
+import Following from './pages/Following'
+import Niches from './pages/Niches'
+import Collections from './pages/Collections'
+import Likes from './pages/Likes'
+import History from './pages/History'
+import Account from './pages/Account'
+import Creator from './pages/Creator'
+import CollectionDetail from './pages/CollectionDetail'
+import NicheDetail from './pages/NicheDetail'
 import Toasts, { useToasts } from './components/Toasts'
+import { NotifyProvider } from './context/notify'
+import { NavProvider, useNav } from './context/nav'
+import type { Route } from './context/nav'
+import { PlayerProvider } from './player/PlayerProvider'
 import type { AuthStatus, DownloadTask } from '@shared/types'
 
-type Page =
-  | 'for-you'
-  | 'discover'
-  | 'following'
-  | 'niches'
-  | 'collections'
-  | 'likes'
-  | 'downloads'
-  | 'history'
-  | 'settings'
-  | 'account'
+// Top-level nav routes reachable from the sidebar (the param-less routes).
+type NavName = Extract<Route, { name: string; username?: undefined; id?: undefined }>['name']
 
 interface NavItem {
-  id: Page
+  id: NavName
   label: string
 }
 interface NavGroup {
@@ -47,24 +52,141 @@ const GROUPS: NavGroup[] = [
   }
 ]
 
-// Kicker numbering + copy for each screen's PageHeader.
-const PAGE_META: Record<Page, { title: string; kicker: string; index: number }> = {
-  'for-you': { title: 'For you', kicker: 'for you', index: 1 },
-  discover: { title: 'Discover', kicker: 'discover', index: 2 },
-  following: { title: 'Following', kicker: 'following', index: 3 },
-  niches: { title: 'Niches', kicker: 'niches', index: 4 },
-  collections: { title: 'Collections', kicker: 'library', index: 5 },
-  likes: { title: 'Likes', kicker: 'library', index: 6 },
-  downloads: { title: 'Downloads', kicker: 'library', index: 7 },
-  history: { title: 'History', kicker: 'library', index: 8 },
-  settings: { title: 'Settings', kicker: 'preferences', index: 9 },
-  account: { title: 'Account', kicker: 'you', index: 10 }
-}
-
 const ACTIVE_STATUSES: DownloadTask['status'][] = ['queued', 'downloading', 'paused']
 
+/** Renders the page component for the active route. */
+function RoutedPage({
+  route,
+  notify
+}: {
+  route: Route
+  notify: (m: string, t?: import('@shared/types').ToastType) => void
+}): JSX.Element {
+  switch (route.name) {
+    case 'for-you':
+      return <ForYou />
+    case 'discover':
+      return <Discover />
+    case 'following':
+      return <Following />
+    case 'niches':
+      return <Niches />
+    case 'collections':
+      return <Collections />
+    case 'likes':
+      return <Likes />
+    case 'downloads':
+      return <Downloads />
+    case 'history':
+      return <History />
+    case 'settings':
+      return <SettingsPage notify={notify} />
+    case 'account':
+      return <Account />
+    case 'creator':
+      return <Creator username={route.username} />
+    case 'collection':
+      return <CollectionDetail id={route.id} title={route.title} />
+    case 'niche':
+      return <NicheDetail id={route.id} title={route.title} />
+  }
+}
+
+/** App shell: sidebar + routed content. Consumes nav/notify contexts. */
+function Shell({
+  auth,
+  activeDownloads,
+  onSignIn,
+  onSignOut,
+  notify,
+  toastItems
+}: {
+  auth: AuthStatus
+  activeDownloads: number
+  onSignIn: () => void
+  onSignOut: () => void
+  notify: (m: string, t?: import('@shared/types').ToastType) => void
+  toastItems: ReturnType<typeof useToasts>['items']
+}): JSX.Element {
+  const { route, navigate, back, canBack } = useNav()
+  const avatarLetter = (auth.username?.[0] ?? '?').toUpperCase()
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="wordmark">
+          RedGifs<span className="dot">.</span>
+        </div>
+
+        {GROUPS.map((group) => (
+          <div className="nav-group" key={group.label}>
+            <div className="nav-group-label">{group.label}</div>
+            {group.items.map((item) => {
+              const isActive = route.name === item.id
+              const count = item.id === 'downloads' ? activeDownloads : 0
+              return (
+                <button
+                  key={item.id}
+                  className={`nav-item ${isActive ? 'active' : ''}`}
+                  onClick={() => navigate({ name: item.id })}
+                  aria-current={isActive ? 'page' : undefined}
+                >
+                  <span className="nav-text">{item.label}</span>
+                  {count > 0 && <span className="nav-count">{count}</span>}
+                </button>
+              )
+            })}
+          </div>
+        ))}
+
+        <div className="acct">
+          {auth.authenticated ? (
+            <>
+              <div className="acct-avatar" aria-hidden="true">{avatarLetter}</div>
+              <button
+                className="acct-name btn-ghost"
+                style={{ border: 0, background: 'none', textAlign: 'left', padding: 0, cursor: 'pointer' }}
+                title="View account"
+                onClick={() => navigate({ name: 'account' })}
+              >
+                {auth.username ? `@${auth.username}` : 'Signed in'}
+              </button>
+              <button className="btn btn-sm" onClick={onSignOut} title="Sign out">
+                Out
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="acct-avatar" aria-hidden="true">·</div>
+              <div className="acct-name">
+                <div className="acct-sub">Not signed in</div>
+              </div>
+              <button className="btn btn-ember btn-sm" onClick={onSignIn}>
+                Sign in
+              </button>
+            </>
+          )}
+        </div>
+      </aside>
+
+      <main className="content">
+        {canBack && (
+          <button className="shell-back btn btn-ghost btn-sm" onClick={back} title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            Back
+          </button>
+        )}
+        <RoutedPage route={route} notify={notify} />
+      </main>
+
+      <Toasts items={toastItems} />
+    </div>
+  )
+}
+
 export default function App(): JSX.Element {
-  const [page, setPage] = useState<Page>('for-you')
   const [auth, setAuth] = useState<AuthStatus>({ authenticated: false })
   const [tasks, setTasks] = useState<DownloadTask[]>([])
   const toasts = useToasts()
@@ -122,76 +244,20 @@ export default function App(): JSX.Element {
     }
   }
 
-  const meta = PAGE_META[page]
-  const avatarLetter = (auth.username?.[0] ?? '?').toUpperCase()
-
   return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="wordmark">
-          RedGifs<span className="dot">.</span>
-        </div>
-
-        {GROUPS.map((group) => (
-          <div className="nav-group" key={group.label}>
-            <div className="nav-group-label">{group.label}</div>
-            {group.items.map((item) => {
-              const isActive = page === item.id
-              const count = item.id === 'downloads' ? activeDownloads : 0
-              return (
-                <button
-                  key={item.id}
-                  className={`nav-item ${isActive ? 'active' : ''}`}
-                  onClick={() => setPage(item.id)}
-                  aria-current={isActive ? 'page' : undefined}
-                >
-                  <span className="nav-text">{item.label}</span>
-                  {count > 0 && <span className="nav-count">{count}</span>}
-                </button>
-              )
-            })}
-          </div>
-        ))}
-
-        <div className="acct">
-          {auth.authenticated ? (
-            <>
-              <div className="acct-avatar" aria-hidden="true">{avatarLetter}</div>
-              <button
-                className="acct-name btn-ghost"
-                style={{ border: 0, background: 'none', textAlign: 'left', padding: 0, cursor: 'pointer' }}
-                title="View account"
-                onClick={() => setPage('account')}
-              >
-                {auth.username ? `@${auth.username}` : 'Signed in'}
-              </button>
-              <button className="btn btn-sm" onClick={signOut} title="Sign out">
-                Out
-              </button>
-            </>
-          ) : (
-            <>
-              <div className="acct-avatar" aria-hidden="true">·</div>
-              <div className="acct-name">
-                <div className="acct-sub">Not signed in</div>
-              </div>
-              <button className="btn btn-ember btn-sm" onClick={signIn}>
-                Sign in
-              </button>
-            </>
-          )}
-        </div>
-      </aside>
-
-      <main className="content">
-        {page === 'downloads' && <Downloads />}
-        {page === 'settings' && <SettingsPage notify={toasts.push} />}
-        {page !== 'downloads' && page !== 'settings' && (
-          <Stub title={meta.title} kicker={meta.kicker} kickerIndex={meta.index} />
-        )}
-      </main>
-
-      <Toasts items={toasts.items} />
-    </div>
+    <NotifyProvider value={toasts.push}>
+      <NavProvider>
+        <PlayerProvider>
+          <Shell
+            auth={auth}
+            activeDownloads={activeDownloads}
+            onSignIn={signIn}
+            onSignOut={signOut}
+            notify={toasts.push}
+            toastItems={toasts.items}
+          />
+        </PlayerProvider>
+      </NavProvider>
+    </NotifyProvider>
   )
 }
