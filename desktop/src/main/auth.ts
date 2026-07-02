@@ -1,0 +1,104 @@
+import { BrowserWindow, session } from 'electron'
+import type { AuthStatus } from '../shared/types'
+import type { RedgifsApi } from './api'
+import type { Storage } from './storage'
+import { isUserToken } from './jwt'
+
+const PARTITION = 'persist:redgifs'
+// Load the site root (login is a modal there); token capture happens on the
+// first authed api.redgifs.com request after the user logs in, regardless of route.
+const LOGIN_URL = 'https://www.redgifs.com/'
+
+export interface AuthDeps {
+  api: RedgifsApi
+  storage: Storage
+  onChange: (status: AuthStatus) => void
+}
+
+export class AuthManager {
+  private win: BrowserWindow | null = null
+
+  constructor(private deps: AuthDeps) {}
+
+  status(): AuthStatus {
+    return { authenticated: this.deps.api.isAuthenticated() }
+  }
+
+  /**
+   * Opens a real redgifs.com login window on a persistent partition and captures
+   * the user bearer token: primarily by sniffing the Authorization header on
+   * api.redgifs.com requests, with a localStorage JWT scan as a fallback.
+   * Resolves { authenticated:false } if the window is closed without a token.
+   */
+  async login(): Promise<AuthStatus> {
+    if (this.win && !this.win.isDestroyed()) this.win.focus()
+
+    return new Promise<AuthStatus>((resolve) => {
+      const ses = session.fromPartition(PARTITION)
+      let settled = false
+
+      const finish = (token?: string): void => {
+        if (settled) return
+        settled = true
+        // Detach the header listener.
+        ses.webRequest.onBeforeSendHeaders(null)
+        if (token) {
+          this.deps.api.setUserToken(token)
+          this.deps.storage.setUserToken(token)
+        }
+        const status: AuthStatus = { authenticated: !!token }
+        this.deps.onChange(status)
+        const w = this.win
+        this.win = null
+        if (w && !w.isDestroyed()) w.close()
+        resolve(status)
+      }
+
+      // Primary capture: sniff Authorization: Bearer on api.redgifs.com calls.
+      ses.webRequest.onBeforeSendHeaders({ urls: ['*://api.redgifs.com/*'] }, (details, cb) => {
+        const h = details.requestHeaders
+        const auth = h['Authorization'] || h['authorization'] || ''
+        const m = /^Bearer\s+(.+)$/i.exec(auth)
+        if (m && isUserToken(m[1])) finish(m[1])
+        cb({ requestHeaders: h })
+      })
+
+      this.win = new BrowserWindow({
+        width: 520,
+        height: 760,
+        title: 'Log in to RedGifs',
+        autoHideMenuBar: true,
+        webPreferences: { partition: PARTITION }
+      })
+      this.win.on('closed', () => finish(undefined))
+
+      // Fallback: poll localStorage for a user JWT.
+      const scan = (): void => {
+        if (settled || !this.win || this.win.isDestroyed()) return
+        this.win.webContents
+          .executeJavaScript(
+            `(function(){for(var i=0;i<localStorage.length;i++){var v=localStorage.getItem(localStorage.key(i));if(v&&v.indexOf('eyJ')===0&&v.length>40)return v;}return '';})()`
+          )
+          .then((v: string) => {
+            if (v && isUserToken(v)) finish(v)
+            else setTimeout(scan, 1500)
+          })
+          .catch(() => setTimeout(scan, 1500))
+      }
+      this.win.webContents.on('did-finish-load', () => setTimeout(scan, 1000))
+
+      void this.win.loadURL(LOGIN_URL)
+    })
+  }
+
+  async logout(): Promise<void> {
+    this.deps.api.clearUserToken()
+    this.deps.storage.clearUserToken()
+    try {
+      await session.fromPartition(PARTITION).clearStorageData()
+    } catch {
+      // best-effort
+    }
+    this.deps.onChange({ authenticated: false })
+  }
+}
