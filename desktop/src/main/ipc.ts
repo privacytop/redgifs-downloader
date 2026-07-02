@@ -40,6 +40,7 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
     return r
   })
   ipcMain.handle(IPC.searchCache, (_e, filter) => storage.searchCachedGifs(filter))
+  ipcMain.handle(IPC.gifCollections, (_e, gifId: string) => storage.gifCollectionIds(gifId))
 
   ipcMain.handle(IPC.getForYou, (_e, p: number) => api.getForYou(p))
   ipcMain.handle(IPC.searchGifs, (_e, opts) => api.searchGifs(opts))

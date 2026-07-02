@@ -83,8 +83,8 @@ export class RedgifsApi {
       }
       const resp = await fetch(url, init)
       if (resp.status === 200) return (await resp.json()) as T
-      // POST/PATCH mutation endpoints often reply 201/204 with an empty body.
-      if (resp.status === 201 || resp.status === 204) return undefined as T
+      // Mutation endpoints reply 201/202/204 with an empty (or ignorable) body.
+      if (resp.status === 201 || resp.status === 202 || resp.status === 204) return undefined as T
       if (resp.status === 429) {
         const body = await resp.json().catch(() => ({})) as { error?: { delay?: number } }
         this.rl.note429((body.error?.delay ?? 60) * 1000)

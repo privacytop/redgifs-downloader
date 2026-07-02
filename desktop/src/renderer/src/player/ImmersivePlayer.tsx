@@ -355,6 +355,7 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
             poster={poster}
             controls={false}
             autoPlay
+            loop
             playsInline
             onClick={togglePlay}
             onLoadedMetadata={onLoadedMetadata}
@@ -367,76 +368,63 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
             style={{ cursor: 'pointer' }}
           />
 
-          {/* control bar over the video bottom */}
-          <div
-            style={controlBarStyle}
-            onClick={(e) => e.stopPropagation()}
-            onWheel={(e) => e.stopPropagation()}
-          >
+          {/* mute + like, overlaid on the video's right edge */}
+          <div style={videoRailStyle} onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
-              style={ctrlBtnStyle}
-              onClick={togglePlay}
-              aria-label={playing ? 'Pause' : 'Play'}
-              title={playing ? 'Pause' : 'Play'}
-            >
-              {playing ? (
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={ctrlIconStyle}>
-                  <rect x="6" y="5" width="4" height="14" rx="1" />
-                  <rect x="14" y="5" width="4" height="14" rx="1" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={ctrlIconStyle}>
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
-            </button>
-
-            <span style={timeStyle}>{formatDuration(currentTime)}</span>
-
-            <input
-              type="range"
-              className="player-seek"
-              style={seekStyle}
-              min={0}
-              max={duration || 0}
-              step={0.1}
-              value={Math.min(currentTime, duration || 0)}
-              onChange={onSeek}
-              onMouseEnter={() => {
-                overScrubberRef.current = true
-              }}
-              onMouseLeave={() => {
-                overScrubberRef.current = false
-              }}
-              aria-label="Seek"
-            />
-
-            <span style={timeStyle}>{formatDuration(duration)}</span>
-
-            <button
-              type="button"
-              style={ctrlBtnStyle}
+              style={overlayBtnStyle}
               onClick={() => setMuted((m) => !m)}
               aria-label={muted ? 'Unmute' : 'Mute'}
               aria-pressed={muted}
               title={muted ? 'Unmute' : 'Mute'}
             >
               {muted ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={ctrlIconStyle}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={overlayIconStyle}>
                   <path d="M11 5 6 9H2v6h4l5 4z" />
                   <path d="m23 9-6 6" />
                   <path d="m17 9 6 6" />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={ctrlIconStyle}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={overlayIconStyle}>
                   <path d="M11 5 6 9H2v6h4l5 4z" />
                   <path d="M15.5 8.5a5 5 0 0 1 0 7" />
                   <path d="M19 5a9 9 0 0 1 0 14" />
                 </svg>
               )}
             </button>
+            <button
+              type="button"
+              style={{ ...overlayBtnStyle, ...(liked ? likedOverlayStyle : null) }}
+              onClick={toggleLike}
+              aria-pressed={liked}
+              title={liked ? 'Unlike' : 'Like'}
+            >
+              <svg viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={overlayIconStyle}>
+                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+              </svg>
+            </button>
           </div>
+
+          {/* full-width timeline pinned to the very bottom of the video */}
+          <input
+            type="range"
+            className="player-seek-bottom"
+            style={bottomSeekStyle}
+            min={0}
+            max={duration || 0}
+            step={0.1}
+            value={Math.min(currentTime, duration || 0)}
+            onChange={onSeek}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={(e) => e.stopPropagation()}
+            onMouseEnter={() => {
+              overScrubberRef.current = true
+            }}
+            onMouseLeave={() => {
+              overScrubberRef.current = false
+            }}
+            aria-label="Seek"
+          />
         </div>
       </div>
 
@@ -461,19 +449,6 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
             <path d="M5 21h14" />
           </svg>
           Save
-        </button>
-
-        <button
-          className={`btn player-like ${liked ? 'on' : ''}`}
-          type="button"
-          onClick={toggleLike}
-          aria-pressed={liked}
-          title={liked ? 'Unlike' : 'Like'}
-        >
-          <svg viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
-          </svg>
-          {liked ? 'Liked' : 'Like'}
         </button>
 
         <div style={actionRowStyle}>
@@ -587,65 +562,63 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
 
 /* --- inline Midnight Press styles (tokens.css is off-limits for this task) -- */
 
+// Wrapper hugs the video so the right rail + bottom seek anchor to its edges.
 const stageWrapStyle: CSSProperties = {
   position: 'relative',
-  display: 'grid',
-  placeItems: 'center',
+  display: 'inline-flex',
   maxWidth: '100%'
 }
 
-const controlBarStyle: CSSProperties = {
+const videoRailStyle: CSSProperties = {
   position: 'absolute',
-  left: 12,
   right: 12,
-  bottom: 12,
+  top: '50%',
+  transform: 'translateY(-50%)',
   zIndex: 3,
   display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  padding: '8px 12px',
-  background: 'rgba(12, 11, 14, 0.72)',
-  border: '1px solid var(--line2)',
-  borderRadius: 999,
-  backdropFilter: 'blur(8px)'
+  flexDirection: 'column',
+  gap: 14
 }
 
-const ctrlBtnStyle: CSSProperties = {
-  flex: 'none',
-  width: 32,
-  height: 32,
+const overlayBtnStyle: CSSProperties = {
+  width: 46,
+  height: 46,
   padding: 0,
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  background: 'none',
-  border: 0,
-  borderRadius: 8,
+  background: 'rgba(12, 11, 14, 0.55)',
+  border: '1px solid var(--line2)',
+  borderRadius: '50%',
   color: 'var(--cream)',
-  cursor: 'pointer'
+  cursor: 'pointer',
+  backdropFilter: 'blur(8px)'
 }
 
-const ctrlIconStyle: CSSProperties = {
-  width: 18,
-  height: 18
+const overlayIconStyle: CSSProperties = {
+  width: 20,
+  height: 20
 }
 
-const timeStyle: CSSProperties = {
-  flex: 'none',
-  fontFamily: 'var(--mono)',
-  fontSize: 11,
-  letterSpacing: '0.04em',
-  color: 'var(--mut)',
-  minWidth: 40,
-  textAlign: 'center'
+const likedOverlayStyle: CSSProperties = {
+  color: 'var(--ember)',
+  borderColor: 'var(--ember)'
 }
 
-const seekStyle: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  height: 4,
+// Thin full-width scrubber flush with the video's bottom edge.
+const bottomSeekStyle: CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 0,
+  width: '100%',
+  height: 6,
+  margin: 0,
+  padding: 0,
+  zIndex: 4,
   accentColor: 'var(--ember)',
-  cursor: 'pointer'
+  cursor: 'pointer',
+  background: 'transparent'
 }
 
 const actionRowStyle: CSSProperties = {

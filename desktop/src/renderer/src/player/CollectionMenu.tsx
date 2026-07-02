@@ -45,6 +45,22 @@ const rowStyle: CSSProperties = {
   fontSize: 13
 }
 
+const thumbBoxStyle: CSSProperties = {
+  flex: 'none',
+  width: 40,
+  height: 28,
+  borderRadius: 5,
+  overflow: 'hidden',
+  background: 'var(--bg)',
+  border: '1px solid var(--line2)'
+}
+
+const thumbImgStyle: CSSProperties = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover'
+}
+
 const countStyle: CSSProperties = {
   fontFamily: 'var(--mono)',
   fontSize: 10,
@@ -80,6 +96,7 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
   const notify = useNotify()
 
   const [collections, setCollections] = useState<Collection[] | null>(null)
+  const [inIds, setInIds] = useState<Set<string>>(new Set())
   const [failed, setFailed] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -91,8 +108,12 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
 
   const load = async (): Promise<void> => {
     try {
-      const list = await window.api.getCollections()
+      const [list, ids] = await Promise.all([
+        window.api.getCollections(),
+        window.api.gifCollections(contentId).catch(() => [] as string[])
+      ])
       setCollections(list)
+      setInIds(new Set(ids))
       setFailed(false)
     } catch {
       setCollections([])
@@ -131,14 +152,15 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
   }, [creating])
 
   const add = async (c: Collection): Promise<void> => {
-    if (busyId) return
+    if (busyId || inIds.has(c.id)) return
     setBusyId(c.id)
     try {
       await window.api.addToCollection(c.id, contentId)
+      setInIds((prev) => new Set(prev).add(c.id))
       notify('Added to ' + c.name, 'success')
-      onClose()
     } catch (e) {
       notify('Add failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    } finally {
       setBusyId(null)
     }
   }
@@ -183,7 +205,7 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
             type="button"
             role="menuitem"
             style={rowStyle}
-            disabled={busyId !== null}
+            disabled={busyId !== null || inIds.has(c.id)}
             onClick={() => void add(c)}
             onMouseEnter={(e) => {
               e.currentTarget.style.background = 'var(--bg)'
@@ -192,12 +214,23 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
               e.currentTarget.style.background = 'none'
             }}
           >
-            <span
-              style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-              {busyId === c.id ? 'Adding…' : c.name}
+            <span style={{ display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
+              <span style={thumbBoxStyle}>
+                {c.thumbnailUrl && (
+                  <img src={c.thumbnailUrl} alt="" loading="lazy" style={thumbImgStyle} />
+                )}
+              </span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {busyId === c.id ? 'Adding…' : c.name}
+              </span>
             </span>
-            <span style={countStyle}>{c.contentCount}</span>
+            {inIds.has(c.id) ? (
+              <span style={{ ...countStyle, color: 'var(--ok)' }} title="Already in this collection">
+                ✓ in
+              </span>
+            ) : (
+              <span style={countStyle}>{c.contentCount}</span>
+            )}
           </button>
         ))
       )}
