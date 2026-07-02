@@ -3,6 +3,7 @@ import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNav } from '../context/nav'
 import { useNotify } from '../context/notify'
+import { useCachedResource } from '../hooks/useCachedResource'
 import { formatCount } from '../lib/format'
 import type { Collection } from '@shared/types'
 
@@ -12,43 +13,28 @@ export default function Collections(): JSX.Element {
   const notify = useNotify()
 
   const [authed, setAuthed] = useState<boolean | null>(null)
-  const [collections, setCollections] = useState<Collection[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
     window.api
       .authStatus()
       .then((s) => {
-        if (!alive) return undefined
-        setAuthed(s.authenticated)
-        if (!s.authenticated) {
-          setLoading(false)
-          return undefined
-        }
-        return window.api
-          .getCollections()
-          .then((cols) => {
-            if (alive) setCollections(cols)
-          })
-          .catch((e: Error) => {
-            if (alive) setError(e.message)
-          })
-          .finally(() => {
-            if (alive) setLoading(false)
-          })
+        if (alive) setAuthed(s.authenticated)
       })
-      .catch((e: Error) => {
-        if (!alive) return
-        setAuthed(false)
-        setError(e.message)
-        setLoading(false)
+      .catch(() => {
+        if (alive) setAuthed(false)
       })
     return () => {
       alive = false
     }
   }, [])
+
+  const {
+    data,
+    loading,
+    error
+  } = useCachedResource<Collection[]>('collections', () => window.api.getCollections(), [authed])
+  const collections = data ?? []
 
   const downloadAll = useCallback(
     (c: Collection, e: React.MouseEvent) => {

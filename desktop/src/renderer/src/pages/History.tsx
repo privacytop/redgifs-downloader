@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
 import type { DownloadRecord, Statistics } from '@shared/types'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNav } from '../context/nav'
+import { useCachedResource } from '../hooks/useCachedResource'
 import { formatSize, formatCount } from '../lib/format'
 
 interface Tile {
@@ -52,25 +52,15 @@ function StatTile({ label, value }: Tile): JSX.Element {
 
 export default function History(): JSX.Element {
   const { navigate } = useNav()
-  const [records, setRecords] = useState<DownloadRecord[]>([])
-  const [stats, setStats] = useState<Statistics | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { data: recordsData, loading: recordsLoading } = useCachedResource<DownloadRecord[]>(
+    'history',
+    () => window.api.getHistory(undefined, 200),
+    []
+  )
+  const { data: stats } = useCachedResource<Statistics>('stats', () => window.api.getStats(), [])
 
-  useEffect(() => {
-    let alive = true
-    Promise.all([window.api.getHistory(undefined, 200), window.api.getStats()])
-      .then(([recs, st]) => {
-        if (!alive) return
-        setRecords(recs)
-        setStats(st)
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
+  const records = recordsData ?? []
+  const loading = recordsLoading && recordsData === null
 
   const topUser = stats?.topUsers?.[0]
 

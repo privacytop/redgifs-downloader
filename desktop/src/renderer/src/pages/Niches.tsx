@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNav } from '../context/nav'
+import { useCachedResource } from '../hooks/useCachedResource'
 import { formatCount } from '../lib/format'
 import type { Niche } from '@shared/types'
 
@@ -112,10 +113,6 @@ export default function Niches(): JSX.Element {
   const { navigate } = useNav()
   const [tab, setTab] = useState<Tab>('trending')
   const [authed, setAuthed] = useState(false)
-  const [rows, setRows] = useState<Niche[] | string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
   useEffect(() => {
     window.api.authStatus().then((s) => setAuthed(s.authenticated))
   }, [])
@@ -123,30 +120,13 @@ export default function Niches(): JSX.Element {
   const active = TABS.find((t) => t.key === tab)!
   const gated = active.needsAuth && !authed
 
-  const load = useCallback(async (): Promise<void> => {
-    setLoading(true)
-    setError(null)
-    try {
-      const result = await active.fetch()
-      setRows(result)
-    } catch (e) {
-      setError((e as Error).message)
-      setRows([])
-    } finally {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
-
-  useEffect(() => {
-    if (gated) {
-      setRows([])
-      setError(null)
-      setLoading(false)
-      return
-    }
-    void load()
-  }, [gated, load])
+  // Cache-first per tab: show the last-known list instantly, then revalidate.
+  const { data, loading, error } = useCachedResource<Niche[] | string[]>(
+    `niches:${tab}`,
+    () => (gated ? Promise.resolve([] as Niche[]) : active.fetch()),
+    [tab, authed]
+  )
+  const rows: Niche[] | string[] = gated ? [] : (data ?? [])
 
   const openNiche = (n: Niche): void => navigate({ name: 'niche', id: n.id, title: n.name })
   const openCategory = (name: string): void => navigate({ name: 'tag', tag: name })
