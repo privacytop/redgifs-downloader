@@ -64,40 +64,46 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
     }
   }, [thumbMode, frameSrc])
 
-  // `auto`: after the thumbnail loads, measure its luminance; if it's near-black,
-  // replace it with a mid-clip frame. Canvas reads may throw (taint) — swallow.
-  function onThumbLoad(e: React.SyntheticEvent<HTMLImageElement>): void {
-    if (thumbMode !== 'auto' || captured || !frameSrc) return
-    try {
-      const img = e.currentTarget
-      const sw = 32
-      const sh = Math.max(1, Math.round((img.naturalHeight / img.naturalWidth) * sw)) || 32
-      const canvas = document.createElement('canvas')
-      canvas.width = sw
-      canvas.height = sh
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-      ctx.drawImage(img, 0, 0, sw, sh)
-      const { data } = ctx.getImageData(0, 0, sw, sh)
-      let sum = 0
-      const px = data.length / 4
-      for (let i = 0; i < data.length; i += 4) {
-        sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]
+  // `auto`: probe the thumbnail's luminance on a SEPARATE cross-origin image (so
+  // the visible poster never needs crossorigin and can't break on a missing CORS
+  // header). If it reads near-black, swap in a mid-clip frame. Best-effort: any
+  // CORS/taint/decode failure just keeps the thumbnail.
+  useEffect(() => {
+    if (thumbMode !== 'auto' || captured || !thumbnail || !frameSrc) return
+    let alive = true
+    const probe = new Image()
+    probe.crossOrigin = 'anonymous'
+    probe.onload = (): void => {
+      if (!alive) return
+      try {
+        const sw = 32
+        const sh = Math.max(1, Math.round((probe.naturalHeight / probe.naturalWidth) * sw)) || 32
+        const canvas = document.createElement('canvas')
+        canvas.width = sw
+        canvas.height = sh
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        ctx.drawImage(probe, 0, 0, sw, sh)
+        const { data } = ctx.getImageData(0, 0, sw, sh)
+        let sum = 0
+        const px = data.length / 4
+        for (let i = 0; i < data.length; i += 4) {
+          sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]
+        }
+        if (sum / px < 18) {
+          captureFrame(frameSrc, 'middle').then((frame) => {
+            if (alive && frame) setCaptured(frame)
+          }).catch(() => {})
+        }
+      } catch {
+        /* tainted / read failed — keep the thumbnail */
       }
-      const avg = sum / px
-      if (avg < 18) {
-        captureFrame(frameSrc, 'middle')
-          .then((frame) => {
-            if (frame) setCaptured(frame)
-          })
-          .catch(() => {
-            /* keep thumbnail */
-          })
-      }
-    } catch {
-      /* canvas tainted or read failed — keep the thumbnail */
     }
-  }
+    probe.src = thumbnail
+    return () => {
+      alive = false
+    }
+  }, [thumbMode, thumbnail, frameSrc, captured])
 
   function enter(): void {
     setHover(true)
@@ -134,10 +140,6 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
           src={poster}
           alt={content.title || content.username}
           loading="lazy"
-          // Needed so the `auto` luminance check can read the pixels without
-          // tainting the canvas. Harmless for other modes.
-          crossOrigin="anonymous"
-          onLoad={onThumbLoad}
         />
       )}
 
