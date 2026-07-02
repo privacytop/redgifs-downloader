@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Content, ContentResponse } from '@shared/types'
 import { usePlayer } from '../player/PlayerProvider'
 import { useBlockedTags } from '../context/blockedTags'
+import { readCache, writeCache } from '../lib/cache'
 
 export interface PlayableFeed {
   contents: Content[]
@@ -40,6 +41,10 @@ export function usePlayableFeed(
   // Guard concurrency via a ref (not the `loading` state) so it can't go stale
   // in closures or get stuck `true` when a run is superseded by a reset.
   const loadingRef = useRef(false)
+  // Cache key for page 1 of this feed+params (stale-while-revalidate).
+  const cacheKey = `feed:${label}:${JSON.stringify(deps)}`
+  const cacheKeyRef = useRef(cacheKey)
+  cacheKeyRef.current = cacheKey
 
   const loadNext = useCallback(async (): Promise<Content[]> => {
     if (loadingRef.current) return []
@@ -60,7 +65,14 @@ export function usePlayableFeed(
         .filter((c) => !seen.current.has(c.id))
         .filter((c) => !isBlocked(c))
       fresh.forEach((c) => seen.current.add(c.id))
-      if (fresh.length) setContents((prev) => [...prev, ...fresh])
+      if (next === 1) {
+        // Page 1 replaces the (possibly cached) snapshot and is persisted so the
+        // next visit paints instantly instead of flashing empty.
+        setContents(fresh)
+        writeCache(cacheKeyRef.current, fresh)
+      } else if (fresh.length) {
+        setContents((prev) => [...prev, ...fresh])
+      }
       return fresh
     } catch (e) {
       if (myRun === runId.current) setError((e as Error).message)
@@ -83,7 +95,8 @@ export function usePlayableFeed(
     pagesRef.current = 1
     seen.current = new Set()
     loadingRef.current = false
-    setContents([])
+    // Paint the cached page-1 immediately (no empty flash), then revalidate.
+    setContents(readCache<Content[]>(cacheKeyRef.current) ?? [])
     setError(null)
     void loadNextRef.current()
   }, [])
