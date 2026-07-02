@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { EVT, IPC } from '../shared/ipc'
 import type { DownloadTask } from '../shared/types'
 import { RedgifsApi } from './api'
+import { AuthManager } from './auth'
 import { Downloader } from './downloader'
 import type { Storage } from './storage'
 
@@ -17,6 +18,11 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
     api, storage,
     onUpdate: (t: DownloadTask) => send(EVT.downloadUpdated, t),
     onProgress: (t: DownloadTask) => send(EVT.downloadProgress, t)
+  })
+  const auth = new AuthManager({
+    api,
+    storage,
+    onChange: (status) => send(EVT.authChanged, status)
   })
 
   ipcMain.handle(IPC.searchUsers, (_e, q: string) => api.searchUsers(q))
@@ -37,10 +43,9 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.statsGet, () => storage.getStats())
   ipcMain.handle(IPC.historyGet, (_e, u?: string, l?: number) => storage.getHistory(u, l))
 
-  // Phase 2 stubs so the renderer contract is complete now.
-  ipcMain.handle(IPC.authStatus, () => ({ authenticated: api.isAuthenticated() }))
-  ipcMain.handle(IPC.authLogin, () => ({ authenticated: api.isAuthenticated() }))
-  ipcMain.handle(IPC.authLogout, () => { api.clearUserToken(); storage.clearUserToken() })
+  ipcMain.handle(IPC.authStatus, () => auth.status())
+  ipcMain.handle(IPC.authLogin, () => auth.login())
+  ipcMain.handle(IPC.authLogout, () => auth.logout())
 
   ipcMain.handle(IPC.openPath, (_e, p: string) => shell.openPath(p).then(() => undefined))
   ipcMain.handle(IPC.pickFolder, async () => {
