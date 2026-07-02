@@ -10,6 +10,7 @@ export type Route =
         | 'niches'
         | 'collections'
         | 'likes'
+        | 'library'
         | 'downloads'
         | 'history'
         | 'settings'
@@ -34,7 +35,7 @@ const DEFAULT_ROUTE: Route = { name: 'for-you' }
 // button); only detail views (creator/collection/niche/tag/search) push onto it.
 const BASE_NAMES = new Set([
   'for-you', 'discover', 'following', 'niches', 'collections', 'likes',
-  'downloads', 'history', 'settings', 'account'
+  'library', 'downloads', 'history', 'settings', 'account'
 ])
 
 const NavContext = createContext<NavContextValue | null>(null)

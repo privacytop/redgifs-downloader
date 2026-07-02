@@ -34,6 +34,22 @@ describe('SqliteStorage', () => {
     expect(s.hasDownloaded('', 'g2')).toBe(false)
   })
 
+  it('caches gif membership and removes it', () => {
+    s = new SqliteStorage(':memory:')
+    const gif = {
+      id: 'g1', title: 't', description: 'd', duration: 5, width: 1, height: 2,
+      views: 10, likes: 3, username: 'bob', createDate: 100, hasAudio: false,
+      urls: {}, tags: ['x'], niches: []
+    }
+    s.cacheContents([gif], { type: 'collection', id: 'c1' })
+    expect(s.gifCollectionIds('g1')).toEqual(['c1'])
+    expect(s.searchCachedGifs({ sources: [{ type: 'collection', id: 'c1' }] })).toHaveLength(1)
+
+    s.removeGifMembership('g1', 'collection', 'c1')
+    expect(s.gifCollectionIds('g1')).toEqual([])
+    expect(s.searchCachedGifs({ sources: [{ type: 'collection', id: 'c1' }] })).toHaveLength(0)
+  })
+
   it('persists and clears the user token', () => {
     s = new SqliteStorage(':memory:')
     expect(s.getUserToken()).toBeUndefined()

@@ -6,6 +6,7 @@ import Discover from './pages/Discover'
 import Following from './pages/Following'
 import Niches from './pages/Niches'
 import Collections from './pages/Collections'
+import Library from './pages/Library'
 import Likes from './pages/Likes'
 import History from './pages/History'
 import Account from './pages/Account'
@@ -30,6 +31,7 @@ type NavName =
   | 'niches'
   | 'collections'
   | 'likes'
+  | 'library'
   | 'downloads'
   | 'history'
 
@@ -78,6 +80,7 @@ const GROUPS: NavGroup[] = [
   {
     label: 'Library',
     items: [
+      { id: 'library', label: 'All media' },
       { id: 'collections', label: 'Collections' },
       { id: 'likes', label: 'Likes' },
       { id: 'downloads', label: 'Downloads' },
@@ -107,6 +110,8 @@ function RoutedPage({
       return <Niches />
     case 'collections':
       return <Collections />
+    case 'library':
+      return <Library />
     case 'likes':
       return <Likes />
     case 'downloads':

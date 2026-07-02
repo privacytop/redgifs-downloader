@@ -46,6 +46,17 @@ export interface ContentResponse {
   total: number
 }
 
+/** Progress of the background library indexer (all collections + liked). */
+export interface LibraryProgress {
+  phase: 'collections' | 'liked' | 'done'
+  collectionsDone: number
+  collectionsTotal: number
+  gifsCached: number
+  /** Human label for what's being indexed right now (collection name, etc.). */
+  currentLabel: string
+  running: boolean
+}
+
 export interface UserResult {
   username: string
   name: string
