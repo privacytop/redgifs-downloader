@@ -11,7 +11,10 @@ interface TabDef {
   key: Tab
   label: string
   needsAuth: boolean
-  fetch: () => Promise<Niche[]>
+  // `categories` resolves to bare category-name strings (the live
+  // /niches/categories endpoint returns `{ categories: string[] }`); every
+  // other tab resolves to full niche objects.
+  fetch: () => Promise<Niche[] | string[]>
 }
 
 const TABS: TabDef[] = [
@@ -76,11 +79,40 @@ function NicheCard({ niche, onOpen }: { niche: Niche; onOpen: (n: Niche) => void
   )
 }
 
+function CategoryCard({
+  name,
+  onOpen
+}: {
+  name: string
+  onOpen: (name: string) => void
+}): JSX.Element {
+  return (
+    <button
+      onClick={() => onOpen(name)}
+      style={{
+        display: 'block',
+        textAlign: 'left',
+        width: '100%',
+        background: 'var(--panel)',
+        border: '1px solid var(--line)',
+        borderRadius: 12,
+        padding: 14,
+        color: 'var(--ink)',
+        cursor: 'pointer'
+      }}
+    >
+      <div style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: 'var(--cream)', lineHeight: 1.2 }}>
+        {name}
+      </div>
+    </button>
+  )
+}
+
 export default function Niches(): JSX.Element {
   const { navigate } = useNav()
   const [tab, setTab] = useState<Tab>('trending')
   const [authed, setAuthed] = useState(false)
-  const [niches, setNiches] = useState<Niche[]>([])
+  const [rows, setRows] = useState<Niche[] | string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -95,11 +127,11 @@ export default function Niches(): JSX.Element {
     setLoading(true)
     setError(null)
     try {
-      const rows = await active.fetch()
-      setNiches(rows)
+      const result = await active.fetch()
+      setRows(result)
     } catch (e) {
       setError((e as Error).message)
-      setNiches([])
+      setRows([])
     } finally {
       setLoading(false)
     }
@@ -108,7 +140,7 @@ export default function Niches(): JSX.Element {
 
   useEffect(() => {
     if (gated) {
-      setNiches([])
+      setRows([])
       setError(null)
       setLoading(false)
       return
@@ -117,6 +149,8 @@ export default function Niches(): JSX.Element {
   }, [gated, load])
 
   const openNiche = (n: Niche): void => navigate({ name: 'niche', id: n.id, title: n.name })
+  const openCategory = (name: string): void => navigate({ name: 'tag', tag: name })
+  const isCategories = tab === 'categories'
 
   return (
     <div className="page">
@@ -147,7 +181,7 @@ export default function Niches(): JSX.Element {
         />
       ) : error ? (
         <EmptyState message="Couldn't load niches" hint={error} />
-      ) : niches.length === 0 && !loading ? (
+      ) : rows.length === 0 && !loading ? (
         <EmptyState message="No niches here yet" />
       ) : (
         <div
@@ -157,13 +191,17 @@ export default function Niches(): JSX.Element {
             gap: 14
           }}
         >
-          {niches.map((n) => (
-            <NicheCard key={n.id} niche={n} onOpen={openNiche} />
-          ))}
+          {isCategories
+            ? (rows as string[]).map((c) => (
+                <CategoryCard key={c} name={c} onOpen={openCategory} />
+              ))
+            : (rows as Niche[]).map((n) => (
+                <NicheCard key={n.id} niche={n} onOpen={openNiche} />
+              ))}
         </div>
       )}
 
-      {loading && niches.length === 0 && !gated && !error && (
+      {loading && rows.length === 0 && !gated && !error && (
         <div
           style={{
             fontFamily: '"Space Mono", monospace',
