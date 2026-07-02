@@ -115,8 +115,8 @@ export interface RedgifsApi {
   getCreatorTags(username: string): Promise<string[]>
   getUser(username: string): Promise<UserProfile>
   getMyContent(opts: { type?: 'g' | 'i' | 'all'; order?: string; page?: number }): Promise<ContentResponse>
-  getFollowing(page: number): Promise<UserResult[]>
-  getFollowers(page: number): Promise<UserResult[]>
+  getFollowing(page: number): Promise<{ items: UserResult[]; page: number; pages: number }>
+  getFollowers(page: number): Promise<{ items: UserResult[]; page: number; pages: number }>
 
   getNichesTrending(): Promise<Niche[]>
   getNicheCategories(): Promise<string[]>
