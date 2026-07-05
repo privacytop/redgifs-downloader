@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNotify } from '../context/notify'
+import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
 import { readCache, writeCache } from '../lib/cache'
 import type { UserProfile } from '@shared/types'
@@ -9,7 +10,7 @@ import type { UserProfile } from '@shared/types'
 /** Account page — profile header card, blocked-tags editor, sign out. Requires auth. */
 export default function Account(): JSX.Element {
   const notify = useNotify()
-  const [authed, setAuthed] = useState<boolean | null>(null)
+  const authed = useAuthed()
   // Paint the last-known profile instantly, then revalidate.
   const [profile, setProfile] = useState<UserProfile | null>(() => readCache<UserProfile>('me'))
   const [tag, setTag] = useState('')
@@ -25,34 +26,12 @@ export default function Account(): JSX.Element {
       .catch((e) => notify('Couldn’t load profile: ' + e.message, 'error'))
   }
 
+  // Fetch (or refresh) the profile whenever auth flips to signed-in — including
+  // right after an in-app login while sitting on this page.
   useEffect(() => {
-    let alive = true
-    window.api
-      .authStatus()
-      .then((s) => {
-        if (!alive) return
-        setAuthed(s.authenticated)
-        if (s.authenticated) {
-          window.api
-            .getProfile()
-            .then((p) => {
-              if (alive) {
-                setProfile(p)
-                writeCache('me', p)
-              }
-            })
-            .catch((e) => {
-              if (alive) notify('Couldn’t load profile: ' + e.message, 'error')
-            })
-        }
-      })
-      .catch(() => {
-        if (alive) setAuthed(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [notify])
+    if (authed) refetch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed])
 
   const addTag = (): void => {
     const t = tag.trim().toLowerCase()
@@ -83,7 +62,7 @@ export default function Account(): JSX.Element {
     window.api
       .logout()
       .then(() => {
-        setAuthed(false)
+        // `useAuthed` flips to false via the auth-changed event.
         setProfile(null)
         notify('Signed out', 'success')
       })

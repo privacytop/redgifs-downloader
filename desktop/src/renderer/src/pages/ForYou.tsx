@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import type { Content } from '@shared/types'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
@@ -7,27 +6,13 @@ import EmptyState from '../components/EmptyState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
+import { useAuthed } from '../hooks/useAuthed'
 
 /** Personal recommendation feed — requires auth (getForYou is per-user). */
 export default function ForYou(): JSX.Element {
   const notify = useNotify()
   const [mode, setMode] = useViewMode('for-you', 'grid')
-  const [authed, setAuthed] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    window.api
-      .authStatus()
-      .then((s) => {
-        if (alive) setAuthed(s.authenticated)
-      })
-      .catch(() => {
-        if (alive) setAuthed(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
+  const authed = useAuthed()
 
   const feed = usePlayableFeed((p) => window.api.getForYou(p), 'For you', [authed])
 

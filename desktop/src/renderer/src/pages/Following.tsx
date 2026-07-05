@@ -3,6 +3,7 @@ import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNav } from '../context/nav'
 import { useNotify } from '../context/notify'
+import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
 import { readCache, writeCache } from '../lib/cache'
 import type { UserResult } from '@shared/types'
@@ -12,28 +13,13 @@ export default function Following(): JSX.Element {
   const nav = useNav()
   const notify = useNotify()
 
-  const [authed, setAuthed] = useState<boolean | null>(null)
+  const authed = useAuthed()
   const [creators, setCreators] = useState<UserResult[]>(() => readCache<UserResult[]>('following') ?? [])
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const pageRef = useRef(1)
   const sentinelRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    window.api
-      .authStatus()
-      .then((s) => {
-        if (!cancelled) setAuthed(s.authenticated)
-      })
-      .catch(() => {
-        if (!cancelled) setAuthed(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const loadMore = useCallback(() => {
     if (loading || !hasMore) return

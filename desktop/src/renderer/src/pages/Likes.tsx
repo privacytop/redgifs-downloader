@@ -1,25 +1,17 @@
-import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
 import FeedGrid from '../components/FeedGrid'
 import EmptyState from '../components/EmptyState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
+import { useAuthed } from '../hooks/useAuthed'
 import { useNotify } from '../context/notify'
 import type { Content } from '@shared/types'
 
 export default function Likes(): JSX.Element {
   const notify = useNotify()
-  const [authed, setAuthed] = useState(false)
-  const [checked, setChecked] = useState(false)
+  const authed = useAuthed()
   const [mode, setMode] = useViewMode('likes', 'grid')
-
-  useEffect(() => {
-    window.api
-      .authStatus()
-      .then((s) => setAuthed(s.authenticated))
-      .finally(() => setChecked(true))
-  }, [])
 
   const feed = usePlayableFeed((p) => window.api.getLikes(p), 'Likes', [authed])
 
@@ -30,7 +22,7 @@ export default function Likes(): JSX.Element {
       .catch((e) => notify('Download failed: ' + e.message, 'error'))
   }
 
-  if (checked && !authed) {
+  if (authed === false) {
     return (
       <div className="page">
         <PageHeader kicker="library" kickerIndex={6} title="Likes" />

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback } from 'react'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNav } from '../context/nav'
 import { useNotify } from '../context/notify'
 import { useCachedResource } from '../hooks/useCachedResource'
+import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
 import type { Collection } from '@shared/types'
 
@@ -12,22 +13,7 @@ export default function Collections(): JSX.Element {
   const { navigate } = useNav()
   const notify = useNotify()
 
-  const [authed, setAuthed] = useState<boolean | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    window.api
-      .authStatus()
-      .then((s) => {
-        if (alive) setAuthed(s.authenticated)
-      })
-      .catch(() => {
-        if (alive) setAuthed(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
+  const authed = useAuthed()
 
   const {
     data,

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNav } from '../context/nav'
 import { useCachedResource } from '../hooks/useCachedResource'
+import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
 import type { Niche } from '@shared/types'
 
@@ -112,10 +113,7 @@ function CategoryCard({
 export default function Niches(): JSX.Element {
   const { navigate } = useNav()
   const [tab, setTab] = useState<Tab>('trending')
-  const [authed, setAuthed] = useState(false)
-  useEffect(() => {
-    window.api.authStatus().then((s) => setAuthed(s.authenticated))
-  }, [])
+  const authed = useAuthed() === true
 
   const active = TABS.find((t) => t.key === tab)!
   const gated = active.needsAuth && !authed
