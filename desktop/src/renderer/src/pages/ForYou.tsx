@@ -3,7 +3,8 @@ import type { Content } from '@shared/types'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
 import FeedGrid from '../components/FeedGrid'
-import EmptyState from '../components/EmptyState'
+import FeedState from '../components/FeedState'
+import SignInGate from '../components/SignInGate'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
@@ -35,11 +36,21 @@ export default function ForYou(): JSX.Element {
   }
 
   const tabs = (
-    <div className="seg">
-      <button className={tab === 'for-you' ? 'on' : ''} onClick={() => setTab('for-you')}>
+    <div className="seg" role="group" aria-label="Feed">
+      <button
+        type="button"
+        className={tab === 'for-you' ? 'on' : ''}
+        aria-pressed={tab === 'for-you'}
+        onClick={() => setTab('for-you')}
+      >
         For you
       </button>
-      <button className={tab === 'trending' ? 'on' : ''} onClick={() => setTab('trending')}>
+      <button
+        type="button"
+        className={tab === 'trending' ? 'on' : ''}
+        aria-pressed={tab === 'trending'}
+        onClick={() => setTab('trending')}
+      >
         Trending
       </button>
     </div>
@@ -55,7 +66,7 @@ export default function ForYou(): JSX.Element {
         kickerIndex={1}
         title={tab === 'trending' ? 'Trending' : 'For you'}
         right={
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <div className="controls">
             {tabs}
             <ViewToggle value={mode} onChange={setMode} />
           </div>
@@ -63,21 +74,27 @@ export default function ForYou(): JSX.Element {
       />
 
       {gated ? (
-        <EmptyState
-          message="Sign in to see this"
-          hint="Your personalized feed is tailored to your RedGifs account. Or check out Trending →"
-          action={
-            <button className="btn btn-ember" onClick={() => window.api.login()}>
-              Sign in
+        <>
+          <SignInGate
+            message="Sign in for your personal feed"
+            hint="Or browse Trending — no account needed."
+          />
+          <div className="empty">
+            <button className="btn" type="button" onClick={() => setTab('trending')}>
+              Browse Trending
             </button>
-          }
-        />
+          </div>
+        </>
       ) : (
         <>
-          {feed.error && <EmptyState message="Couldn't load" hint={feed.error} />}
-          {!feed.error && feed.contents.length === 0 && !feed.loading && (
-            <EmptyState message="Nothing here yet" hint="Come back a little later." />
-          )}
+          <FeedState
+            loading={feed.loading}
+            error={feed.error}
+            isEmpty={feed.contents.length === 0}
+            emptyMessage="Nothing here yet"
+            emptyHint="Come back a little later."
+            onRetry={feed.reload}
+          />
           <FeedGrid
             items={feed.contents}
             mode={mode}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
-import EmptyState from '../components/EmptyState'
+import FeedState from '../components/FeedState'
+import SignInGate from '../components/SignInGate'
 import { useNav } from '../context/nav'
 import { useCachedResource } from '../hooks/useCachedResource'
 import { useAuthed } from '../hooks/useAuthed'
@@ -28,53 +29,14 @@ const TABS: TabDef[] = [
 
 function NicheCard({ niche, onOpen }: { niche: Niche; onOpen: (n: Niche) => void }): JSX.Element {
   return (
-    <button
-      onClick={() => onOpen(niche)}
-      style={{
-        display: 'block',
-        textAlign: 'left',
-        width: '100%',
-        background: 'var(--panel)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
-        padding: 14,
-        color: 'var(--ink)',
-        cursor: 'pointer'
-      }}
-    >
+    <button className="tile" onClick={() => onOpen(niche)}>
       {niche.thumbnail && (
-        <div
-          style={{
-            position: 'relative',
-            width: '100%',
-            aspectRatio: '16 / 9',
-            borderRadius: 8,
-            overflow: 'hidden',
-            marginBottom: 10,
-            background: 'var(--bg)',
-            border: '1px solid var(--line2)'
-          }}
-        >
-          <img
-            src={niche.thumbnail}
-            alt=""
-            loading="lazy"
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-          />
+        <div className="tile-cover ar-16-9">
+          <img src={niche.thumbnail} alt="" loading="lazy" />
         </div>
       )}
-      <div style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: 'var(--cream)', lineHeight: 1.2 }}>
-        {niche.name}
-      </div>
-      <div
-        style={{
-          fontFamily: '"Space Mono", monospace',
-          fontSize: 11,
-          color: 'var(--mut)',
-          marginTop: 6,
-          letterSpacing: '0.02em'
-        }}
-      >
+      <div className="tile-title">{niche.name}</div>
+      <div className="tile-sub">
         {formatCount(niche.subscribers)} subs · {formatCount(niche.gifs)} gifs
       </div>
     </button>
@@ -89,23 +51,8 @@ function CategoryCard({
   onOpen: (name: string) => void
 }): JSX.Element {
   return (
-    <button
-      onClick={() => onOpen(name)}
-      style={{
-        display: 'block',
-        textAlign: 'left',
-        width: '100%',
-        background: 'var(--panel)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
-        padding: 14,
-        color: 'var(--ink)',
-        cursor: 'pointer'
-      }}
-    >
-      <div style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: 'var(--cream)', lineHeight: 1.2 }}>
-        {name}
-      </div>
+    <button className="tile" onClick={() => onOpen(name)}>
+      <div className="tile-title">{name}</div>
     </button>
   )
 }
@@ -148,49 +95,29 @@ export default function Niches(): JSX.Element {
       />
 
       {gated ? (
-        <EmptyState
+        <SignInGate
           message="Sign in to see this"
           hint="Your niches sync once you connect a RedGifs account."
-          action={
-            <button className="btn btn-ember" onClick={() => window.api.login()}>
-              Sign in
-            </button>
-          }
         />
-      ) : error ? (
-        <EmptyState message="Couldn't load niches" hint={error} />
-      ) : rows.length === 0 && !loading ? (
-        <EmptyState message="No niches here yet" />
       ) : (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: 14
-          }}
-        >
-          {isCategories
-            ? (rows as string[])
-                .filter((c): c is string => typeof c === 'string')
-                .map((c) => <CategoryCard key={c} name={c} onOpen={openCategory} />)
-            : (rows as Niche[])
-                .filter((n): n is Niche => typeof n === 'object' && n !== null)
-                .map((n) => <NicheCard key={n.id} niche={n} onOpen={openNiche} />)}
-        </div>
-      )}
-
-      {loading && rows.length === 0 && !gated && !error && (
-        <div
-          style={{
-            fontFamily: '"Space Mono", monospace',
-            fontSize: 12,
-            color: 'var(--dim)',
-            textAlign: 'center',
-            marginTop: 24
-          }}
-        >
-          Loading…
-        </div>
+        <>
+          <FeedState
+            loading={loading}
+            error={error}
+            isEmpty={rows.length === 0}
+            emptyMessage="No niches here yet"
+            skeleton="grid"
+          />
+          <div className="tile-grid">
+            {isCategories
+              ? (rows as string[])
+                  .filter((c): c is string => typeof c === 'string')
+                  .map((c) => <CategoryCard key={c} name={c} onOpen={openCategory} />)
+              : (rows as Niche[])
+                  .filter((n): n is Niche => typeof n === 'object' && n !== null)
+                  .map((n) => <NicheCard key={n.id} niche={n} onOpen={openNiche} />)}
+          </div>
+        </>
       )}
     </div>
   )

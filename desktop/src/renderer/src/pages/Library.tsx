@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
 import FeedGrid from '../components/FeedGrid'
 import EmptyState from '../components/EmptyState'
+import FeedState from '../components/FeedState'
 import { useViewMode } from '../hooks/useViewMode'
 import { usePlayer } from '../player/PlayerProvider'
 import { useBlockedTags } from '../context/blockedTags'
@@ -50,6 +51,7 @@ export default function Library(): JSX.Element {
 
   const [all, setAll] = useState<Content[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [progress, setProgress] = useState<LibraryProgress | null>(null)
 
   // Load the collection list for the source picker (cache-first).
@@ -60,12 +62,16 @@ export default function Library(): JSX.Element {
         setCollections(list)
         writeCache('library:collections', list)
       })
+      // The source-picker list failing is independent of the cached content —
+      // don't route it into the content error state (it would hide the
+      // "index your library" onboarding and blank the grid).
       .catch(() => undefined)
   }, [])
 
   // Pull the cached gifs matching the current source out of local storage.
   const reload = useCallback((): void => {
     setLoading(true)
+    setError(null)
     const filter =
       source === 'all'
         ? {}
@@ -75,7 +81,12 @@ export default function Library(): JSX.Element {
     window.api
       .searchCache(filter)
       .then((rows) => setAll(rows))
-      .catch(() => setAll([]))
+      // Clear the rows too, so a failed reload surfaces the error instead of
+      // leaving the previous source's stale results on screen.
+      .catch((e) => {
+        setAll([])
+        setError(e instanceof Error ? e.message : String(e))
+      })
       .finally(() => setLoading(false))
   }, [source])
 
@@ -142,8 +153,8 @@ export default function Library(): JSX.Element {
       .catch((e) => notify('Download failed: ' + e.message, 'error'))
   }
 
-  const empty = !loading && all.length === 0
-  const noMatch = !loading && all.length > 0 && results.length === 0
+  // Genuinely unindexed: nothing cached at all, no error, done loading.
+  const unindexed = !loading && !error && all.length === 0
 
   return (
     <div className="page">
@@ -154,14 +165,14 @@ export default function Library(): JSX.Element {
         right={<ViewToggle value={mode} onChange={setMode} />}
       />
 
-      <div style={barStyle}>
+      <div className="toolbar">
         <input
-          style={searchStyle}
+          className="field-search"
           placeholder="Search cached gifs — name, creator, tag…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select style={selectStyle} value={source} onChange={(e) => setSource(e.target.value)}>
+        <select className="select" value={source} onChange={(e) => setSource(e.target.value)}>
           <option value="all">All sources</option>
           <option value="liked">Liked</option>
           {collections.map((c) => (
@@ -171,7 +182,7 @@ export default function Library(): JSX.Element {
           ))}
         </select>
         <select
-          style={selectStyle}
+          className="select"
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
         >
@@ -184,24 +195,16 @@ export default function Library(): JSX.Element {
         <button className="btn btn-ember btn-sm" onClick={reindex} disabled={running}>
           {running ? 'Indexing…' : 'Reindex'}
         </button>
+        <span className="readout">
+          {progress
+            ? progress.running
+              ? `${progress.phase === 'liked' ? 'Liked videos' : `Collections ${progress.collectionsDone}/${progress.collectionsTotal}`} · ${progress.gifsCached} cached${progress.currentLabel ? ` · ${progress.currentLabel}` : ''}`
+              : `Indexed ${progress.gifsCached} gifs`
+            : `${results.length} ${results.length === 1 ? 'result' : 'results'}${source !== 'all' ? ' in this source' : ''}`}
+        </span>
       </div>
 
-      {progress && (
-        <div style={progressStyle}>
-          {progress.running
-            ? `${progress.phase === 'liked' ? 'Liked videos' : `Collections ${progress.collectionsDone}/${progress.collectionsTotal}`} · ${progress.gifsCached} cached${progress.currentLabel ? ` · ${progress.currentLabel}` : ''}`
-            : `Indexed ${progress.gifsCached} gifs.`}
-        </div>
-      )}
-
-      {!empty && !noMatch && (
-        <div style={countStyle}>
-          {results.length} {results.length === 1 ? 'result' : 'results'}
-          {source !== 'all' && ' in this source'}
-        </div>
-      )}
-
-      {empty ? (
+      {unindexed ? (
         <EmptyState
           message="Nothing indexed yet"
           hint="Run a reindex to cache metadata for every gif in your collections and likes — then search and sort across your whole library, offline."
@@ -211,54 +214,21 @@ export default function Library(): JSX.Element {
             </button>
           }
         />
-      ) : noMatch ? (
-        <EmptyState message="No matches" hint="Try a different search or source." />
       ) : (
-        <FeedGrid items={results} mode={mode} onOpen={open} onDownload={download} />
+        <>
+          <FeedState
+            loading={loading}
+            error={error}
+            isEmpty={results.length === 0}
+            emptyMessage="No matches"
+            emptyHint="Try a different search or source."
+            onRetry={reload}
+          />
+          {results.length > 0 && (
+            <FeedGrid items={results} mode={mode} onOpen={open} onDownload={download} />
+          )}
+        </>
       )}
     </div>
   )
-}
-
-const barStyle: CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 10,
-  alignItems: 'center',
-  marginBottom: 16
-}
-
-const searchStyle: CSSProperties = {
-  flex: '1 1 260px',
-  minWidth: 0,
-  fontSize: 14,
-  padding: '9px 12px'
-}
-
-const selectStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 12,
-  padding: '8px 10px',
-  background: 'var(--panel)',
-  color: 'var(--ink)',
-  border: '1px solid var(--line)',
-  borderRadius: 8,
-  maxWidth: 200
-}
-
-const progressStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 11.5,
-  letterSpacing: '0.03em',
-  color: 'var(--ember)',
-  marginBottom: 14
-}
-
-const countStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 11,
-  letterSpacing: '0.06em',
-  textTransform: 'uppercase',
-  color: 'var(--dim)',
-  marginBottom: 14
 }

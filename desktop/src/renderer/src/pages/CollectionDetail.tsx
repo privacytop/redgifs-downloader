@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 import PageHeader from '../components/PageHeader'
-import ViewToggle from '../components/ViewToggle'
+import FeedControls from '../components/FeedControls'
 import FeedGrid from '../components/FeedGrid'
-import EmptyState from '../components/EmptyState'
+import FeedState from '../components/FeedState'
+import SignInGate from '../components/SignInGate'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
+import { useAuthed } from '../hooks/useAuthed'
 import { useNotify } from '../context/notify'
 import type { Content } from '@shared/types'
 
@@ -17,6 +19,7 @@ export default function CollectionDetail({
   title: string
 }): JSX.Element {
   const notify = useNotify()
+  const authed = useAuthed()
   const [mode, setMode] = useViewMode('collection', 'grid')
   const feed = usePlayableFeed((p) => window.api.getCollectionContent(id, p), title, [id])
 
@@ -45,25 +48,43 @@ export default function CollectionDetail({
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
   }
 
+  if (authed === false) {
+    return (
+      <div className="page">
+        <PageHeader kicker="collection" kickerIndex={5} title={title} />
+        <SignInGate message="Sign in to view this collection" />
+      </div>
+    )
+  }
+
   return (
     <div className="page">
       <PageHeader
         kicker="collection"
+        kickerIndex={5}
         title={title}
         right={
           <>
-            <ViewToggle value={mode} onChange={setMode} />
-            <button className="btn btn-ember btn-sm" onClick={downloadAll}>
+            <FeedControls mode={mode} onModeChange={setMode} />
+            <button
+              className="btn btn-ember btn-sm"
+              onClick={downloadAll}
+              disabled={feed.loading || feed.contents.length === 0}
+            >
               Download all
             </button>
           </>
         }
       />
 
-      {feed.error && <EmptyState message="Couldn't load this collection" hint={feed.error} />}
-      {!feed.error && feed.contents.length === 0 && !feed.loading && (
-        <EmptyState message="This collection is empty" hint="Nothing has been added here yet." />
-      )}
+      <FeedState
+        loading={feed.loading}
+        error={feed.error}
+        isEmpty={feed.contents.length === 0}
+        emptyMessage="This collection is empty"
+        emptyHint="Nothing has been added here yet."
+        onRetry={feed.reload}
+      />
 
       <FeedGrid
         items={feed.contents}

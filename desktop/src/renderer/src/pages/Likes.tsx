@@ -1,7 +1,8 @@
 import PageHeader from '../components/PageHeader'
-import ViewToggle from '../components/ViewToggle'
+import FeedControls from '../components/FeedControls'
+import FeedState from '../components/FeedState'
+import SignInGate from '../components/SignInGate'
 import FeedGrid from '../components/FeedGrid'
-import EmptyState from '../components/EmptyState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useAuthed } from '../hooks/useAuthed'
@@ -26,14 +27,9 @@ export default function Likes(): JSX.Element {
     return (
       <div className="page">
         <PageHeader kicker="library" kickerIndex={6} title="Likes" />
-        <EmptyState
-          message="Sign in to see this"
-          hint="Your likes live in your RedGifs account. Sign in to bring them here."
-          action={
-            <button className="btn btn-ember" onClick={() => window.api.login()}>
-              Sign in
-            </button>
-          }
+        <SignInGate
+          message="Sign in to see your likes"
+          hint="Your liked clips sync once you connect a RedGifs account."
         />
       </div>
     )
@@ -45,12 +41,16 @@ export default function Likes(): JSX.Element {
         kicker="library"
         kickerIndex={6}
         title="Likes"
-        right={<ViewToggle value={mode} onChange={setMode} />}
+        right={<FeedControls mode={mode} onModeChange={setMode} />}
       />
-      {feed.error && <EmptyState message="Couldn't load" hint={feed.error} />}
-      {!feed.error && feed.contents.length === 0 && !feed.loading && (
-        <EmptyState message="Nothing here yet" hint="Gifs you like on RedGifs will show up here." />
-      )}
+      <FeedState
+        loading={feed.loading}
+        error={feed.error}
+        isEmpty={feed.contents.length === 0}
+        emptyMessage="Nothing here yet"
+        emptyHint="Gifs you like on RedGifs will show up here."
+        onRetry={feed.reload}
+      />
       <FeedGrid
         items={feed.contents}
         mode={mode}

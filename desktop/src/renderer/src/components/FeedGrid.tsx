@@ -19,10 +19,24 @@ interface FeedGridProps {
 }
 
 /**
+ * Editorial "slot" for an item at index `i`: a genuine magazine rhythm rather
+ * than a flat grid. The first item is a 2×2 hero; thereafter every 9th item is
+ * a full-height feature (a tall portrait spanning two rows), so the cadence of
+ * big and small tiles continues down the whole column — not just row one.
+ * Only the featured tiles (hero + tall) carry a plate number, keeping the
+ * ordinary tiles quiet.
+ */
+function editorialSlot(i: number): { cls?: string; featured: boolean } {
+  if (i === 0) return { cls: 'feed-hero', featured: true }
+  if (i % 9 === 4) return { cls: 'feed-tall', featured: true }
+  return { featured: false }
+}
+
+/**
  * Renders a list of `Content` in one of three visually distinct layouts:
  * - `grid`: dense responsive portrait grid of `MediaCard`s.
- * - `editorial`: asymmetric magazine layout — the first item is a large 2×2
- *   hero with rank `01`; the rest flow in the responsive grid with `02`, `03`…
+ * - `editorial`: an asymmetric magazine mosaic — a 2×2 hero plus recurring
+ *   full-height feature tiles, dense-packed so the rhythm runs the whole feed.
  * - `feed`: a single centered column of large portrait items, one per row.
  *
  * Optional infinite scroll: pass `onEndReached` + `hasMore` (+ `loading`).
@@ -69,16 +83,19 @@ export default function FeedGrid({
     return (
       <>
         <div className="feed-grid feed-editorial">
-          {items.map((c, i) => (
-            <div key={c.id} className={i === 0 ? 'feed-hero' : undefined}>
-              <MediaCard
-                content={c}
-                badge={String(i + 1).padStart(2, '0')}
-                onOpen={(x) => onOpen(x, i)}
-                onDownload={onDownload}
-              />
-            </div>
-          ))}
+          {items.map((c, i) => {
+            const { cls, featured } = editorialSlot(i)
+            return (
+              <div key={c.id} className={cls}>
+                <MediaCard
+                  content={c}
+                  badge={featured ? String(i + 1).padStart(2, '0') : undefined}
+                  onOpen={(x) => onOpen(x, i)}
+                  onDownload={onDownload}
+                />
+              </div>
+            )
+          })}
         </div>
         {sentinel}
       </>

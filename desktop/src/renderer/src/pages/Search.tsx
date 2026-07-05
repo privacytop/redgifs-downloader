@@ -1,11 +1,14 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import FeedGrid from '../components/FeedGrid'
-import EmptyState from '../components/EmptyState'
+import FeedControls from '../components/FeedControls'
+import FeedState from '../components/FeedState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
+import { useViewMode } from '../hooks/useViewMode'
 import { useNav } from '../context/nav'
 import { useNotify } from '../context/notify'
 import { formatCount } from '../lib/format'
+import type { ContentType } from '../lib/feedOptions'
 import type { Content, Niche, TagSuggestion, UserResult } from '@shared/types'
 
 /** A single creator result: avatar + @name, click → creator page. */
@@ -42,7 +45,8 @@ export default function Search({ query }: { query: string }): JSX.Element {
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([])
   const [niches, setNiches] = useState<Niche[]>([])
   const [creators, setCreators] = useState<UserResult[]>([])
-  const [type, setType] = useState<'g' | 'i'>('g')
+  const [type, setType] = useState<ContentType>('g')
+  const [mode, setMode] = useViewMode('search', 'grid')
 
   useEffect(() => {
     let alive = true
@@ -83,16 +87,20 @@ export default function Search({ query }: { query: string }): JSX.Element {
 
   return (
     <div className="page">
-      <PageHeader kicker="search" title={query || 'Search'} />
+      <PageHeader
+        kicker="search"
+        title={query || 'Search'}
+        right={<FeedControls mode={mode} onModeChange={setMode} type={type} onTypeChange={setType} />}
+      />
 
       {suggestions.length > 0 && (
         <section style={{ marginBottom: 26 }}>
-          <div className="search-section-label">Tags</div>
-          <div style={chipRowStyle}>
+          <div className="section-label">Tags</div>
+          <div className="chip-row">
             {suggestions.map((s) => (
-              <button key={s.text} type="button" style={chipStyle} onClick={() => openTag(s.text)}>
+              <button key={s.text} type="button" className="chip" onClick={() => openTag(s.text)}>
                 {s.text}
-                <span style={chipCountStyle}>{formatCount(s.gifs)}</span>
+                <span className="stat-l">{formatCount(s.gifs)}</span>
               </button>
             ))}
           </div>
@@ -101,17 +109,15 @@ export default function Search({ query }: { query: string }): JSX.Element {
 
       {niches.length > 0 && (
         <section style={{ marginBottom: 26 }}>
-          <div className="search-section-label">Niches</div>
-          <div style={nicheRowStyle}>
+          <div className="section-label">Niches</div>
+          <div className="tile-grid">
             {niches.map((n) => (
-              <button key={n.id} type="button" style={nicheCardStyle} onClick={() => openNiche(n)}>
-                <span style={nicheThumbStyle}>
-                  {n.thumbnail && <img src={n.thumbnail} alt="" loading="lazy" style={nicheImgStyle} />}
+              <button key={n.id} type="button" className="tile" onClick={() => openNiche(n)}>
+                <span className="tile-cover ar-16-9">
+                  {n.thumbnail && <img src={n.thumbnail} alt="" loading="lazy" />}
                 </span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={nicheNameStyle}>{n.name}</span>
-                  <span style={nicheSubStyle}>{formatCount(n.gifs)} gifs</span>
-                </span>
+                <span className="tile-title">{n.name}</span>
+                <span className="tile-sub">{formatCount(n.gifs)} gifs</span>
               </button>
             ))}
           </div>
@@ -120,7 +126,7 @@ export default function Search({ query }: { query: string }): JSX.Element {
 
       {creators.length > 0 && (
         <section style={{ marginBottom: 26 }}>
-          <div className="search-section-label">Creators</div>
+          <div className="section-label">Creators</div>
           <div className="creator-row">
             {creators.map((u) => (
               <CreatorCard key={u.username} user={u} onOpen={openCreator} />
@@ -130,31 +136,18 @@ export default function Search({ query }: { query: string }): JSX.Element {
       )}
 
       <section>
-        <div style={mediaHeadStyle}>
-          <div className="search-section-label" style={{ margin: 0 }}>
-            {type === 'g' ? 'Videos' : 'Images'}
-          </div>
-          <div className="seg">
-            <button className={type === 'g' ? 'on' : ''} onClick={() => setType('g')}>
-              Videos
-            </button>
-            <button className={type === 'i' ? 'on' : ''} onClick={() => setType('i')}>
-              Images
-            </button>
-          </div>
-        </div>
-
-        {feed.error && <EmptyState message="Couldn't load" hint={feed.error} />}
-        {!feed.error && feed.contents.length === 0 && !feed.loading && (
-          <EmptyState
-            message="No results"
-            hint={query ? `Nothing found for "${query}".` : 'Type a query to search.'}
-          />
-        )}
+        <FeedState
+          loading={feed.loading}
+          error={feed.error}
+          isEmpty={feed.contents.length === 0}
+          emptyMessage="No results"
+          emptyHint={query ? `Nothing found for "${query}".` : 'Type a query to search.'}
+          onRetry={feed.reload}
+        />
 
         <FeedGrid
           items={feed.contents}
-          mode="grid"
+          mode={mode}
           onOpen={feed.openAt}
           onDownload={dl}
           onEndReached={feed.loadMore}
@@ -164,80 +157,4 @@ export default function Search({ query }: { query: string }): JSX.Element {
       </section>
     </div>
   )
-}
-
-const chipRowStyle: CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 8 }
-
-const chipStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 8,
-  fontFamily: 'var(--mono)',
-  fontSize: 12,
-  letterSpacing: '0.02em',
-  color: 'var(--ink)',
-  background: 'var(--panel)',
-  border: '1px solid var(--line)',
-  borderRadius: 999,
-  padding: '6px 12px',
-  cursor: 'pointer'
-}
-
-const chipCountStyle: CSSProperties = { fontSize: 10, color: 'var(--dim)' }
-
-const nicheRowStyle: CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-  gap: 10
-}
-
-const nicheCardStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 11,
-  textAlign: 'left',
-  background: 'var(--panel)',
-  border: '1px solid var(--line)',
-  borderRadius: 10,
-  padding: 8,
-  color: 'var(--ink)',
-  cursor: 'pointer'
-}
-
-const nicheThumbStyle: CSSProperties = {
-  flex: 'none',
-  width: 56,
-  height: 40,
-  borderRadius: 6,
-  overflow: 'hidden',
-  background: 'var(--bg)',
-  border: '1px solid var(--line2)'
-}
-
-const nicheImgStyle: CSSProperties = { width: '100%', height: '100%', objectFit: 'cover' }
-
-const nicheNameStyle: CSSProperties = {
-  display: 'block',
-  fontFamily: 'Fraunces, serif',
-  fontSize: 15,
-  color: 'var(--cream)',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap'
-}
-
-const nicheSubStyle: CSSProperties = {
-  display: 'block',
-  fontFamily: 'var(--mono)',
-  fontSize: 10.5,
-  color: 'var(--mut)',
-  marginTop: 2
-}
-
-const mediaHeadStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 12,
-  marginBottom: 12
 }

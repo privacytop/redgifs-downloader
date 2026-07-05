@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHeader from '../components/PageHeader'
-import EmptyState from '../components/EmptyState'
+import FeedState from '../components/FeedState'
+import SignInGate from '../components/SignInGate'
 import { useNav } from '../context/nav'
-import { useNotify } from '../context/notify'
 import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
-import { readCache, writeCache } from '../lib/cache'
+import { readCache } from '../lib/cache'
 import type { UserResult } from '@shared/types'
 
 /** Creators the signed-in user follows. Paginated grid of creator cards. */
 export default function Following(): JSX.Element {
   const nav = useNav()
-  const notify = useNotify()
 
   const authed = useAuthed()
   const [creators, setCreators] = useState<UserResult[]>(() => readCache<UserResult[]>('following') ?? [])
@@ -21,8 +20,8 @@ export default function Following(): JSX.Element {
   const pageRef = useRef(1)
   const sentinelRef = useRef<HTMLDivElement>(null)
 
-  const loadMore = useCallback(() => {
-    if (loading || !hasMore) return
+  const loadMore = useCallback((force = false) => {
+    if (loading || (!hasMore && !force)) return
     setLoading(true)
     setError(null)
     const page = pageRef.current
@@ -44,6 +43,14 @@ export default function Following(): JSX.Element {
       })
       .finally(() => setLoading(false))
   }, [loading, hasMore])
+
+  // A first-page failure sets hasMore=false, which would make loadMore's guard
+  // reject a retry — so retry re-opens the gate and forces a fresh fetch.
+  const retry = useCallback(() => {
+    setError(null)
+    setHasMore(true)
+    loadMore(true)
+  }, [loadMore])
 
   useEffect(() => {
     if (authed) loadMore()
@@ -68,41 +75,30 @@ export default function Following(): JSX.Element {
     return (
       <div className="page">
         <PageHeader kicker="following" kickerIndex={3} title="Following" />
-        <EmptyState
-          message="Sign in to see this"
-          hint="Your followed creators live behind your RedGifs account."
-          action={
-            <button className="btn btn-ember" onClick={() => window.api.login()}>
-              Sign in
-            </button>
-          }
-        />
+        <SignInGate hint="Your followed creators live behind your RedGifs account." />
       </div>
     )
   }
 
-  const empty = authed === true && creators.length === 0 && !loading && !error
+  // Only "empty" once auth has resolved and a load has settled — otherwise the
+  // empty message flashes in the window before the first fetch starts.
+  const isEmpty = authed === true && creators.length === 0
 
   return (
     <div className="page">
       <PageHeader kicker="following" kickerIndex={3} title="Following" />
 
-      {error && <EmptyState message="Couldn't load following" hint={error} />}
-      {empty && (
-        <EmptyState
-          message="You’re not following anyone yet"
-          hint="Follow creators on RedGifs and they’ll show up here."
-        />
-      )}
+      <FeedState
+        loading={loading || authed === null}
+        error={error}
+        isEmpty={isEmpty}
+        emptyMessage="You’re not following anyone yet"
+        emptyHint="Follow creators on RedGifs and they’ll show up here."
+        onRetry={retry}
+      />
 
       {creators.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
-            gap: 14
-          }}
-        >
+        <div className="creator-row">
           {creators.map((u) => (
             <CreatorCard
               key={u.username}
@@ -114,91 +110,27 @@ export default function Following(): JSX.Element {
       )}
 
       {authed === true && hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
-      {loading && creators.length > 0 && (
-        <div
-          style={{
-            textAlign: 'center',
-            marginTop: 20,
-            fontFamily: 'Space Mono, monospace',
-            fontSize: 12,
-            color: 'var(--dim)'
-          }}
-        >
-          Loading…
-        </div>
-      )}
+      {loading && creators.length > 0 && <div className="readout">Loading…</div>}
     </div>
   )
 }
 
+/** A single creator result: avatar + @name, click → creator page. */
 function CreatorCard({ user, onOpen }: { user: UserResult; onOpen: () => void }): JSX.Element {
-  const initial = (user.name || user.username || '?').trim().charAt(0).toUpperCase() || '?'
   return (
-    <button
-      onClick={onOpen}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 10,
-        textAlign: 'center',
-        background: 'var(--panel)',
-        border: '1px solid var(--line)',
-        borderRadius: 12,
-        padding: 14,
-        cursor: 'pointer',
-        color: 'var(--ink)',
-        width: '100%',
-        font: 'inherit',
-        transition: 'border-color 120ms ease'
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--ember)'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--line)'
-      }}
-    >
-      <div
-        style={{
-          width: 56,
-          height: 56,
-          borderRadius: '50%',
-          background: 'linear-gradient(135deg, var(--ember), var(--ember2))',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--cream)',
-          fontFamily: 'Fraunces, serif',
-          fontSize: 24,
-          fontWeight: 600,
-          flex: '0 0 auto'
-        }}
-      >
-        {initial}
+    <button type="button" className="creator-card" onClick={onOpen} title={`View @${user.username}`}>
+      <div className="creator-avatar" aria-hidden="true">
+        {user.profileImageUrl ? (
+          <img src={user.profileImageUrl} alt={'@' + user.username} loading="lazy" />
+        ) : (
+          <span>{(user.name || user.username || '?').trim().charAt(0).toUpperCase() || '?'}</span>
+        )}
       </div>
-      <div
-        style={{
-          fontFamily: 'Fraunces, serif',
-          fontSize: 16,
-          color: 'var(--cream)',
-          maxWidth: '100%',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap'
-        }}
-      >
-        @{user.username}
-      </div>
-      <div
-        style={{
-          fontFamily: 'Space Mono, monospace',
-          fontSize: 11,
-          color: 'var(--mut)',
-          letterSpacing: '0.02em'
-        }}
-      >
-        {formatCount(user.followers)} followers · {formatCount(user.gifs)} gifs
+      <div className="creator-info">
+        <div className="creator-name">@{user.username}</div>
+        <div className="creator-sub">
+          {formatCount(user.followers)} followers · {formatCount(user.gifs)} gifs
+        </div>
       </div>
     </button>
   )

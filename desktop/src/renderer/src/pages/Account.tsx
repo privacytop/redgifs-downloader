@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
+import SignInGate from '../components/SignInGate'
 import { useNotify } from '../context/notify'
 import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
@@ -13,6 +14,7 @@ export default function Account(): JSX.Element {
   const authed = useAuthed()
   // Paint the last-known profile instantly, then revalidate.
   const [profile, setProfile] = useState<UserProfile | null>(() => readCache<UserProfile>('me'))
+  const [error, setError] = useState<string | null>(null)
   const [tag, setTag] = useState('')
   const [adding, setAdding] = useState(false)
   const [showSug, setShowSug] = useState(false)
@@ -24,9 +26,13 @@ export default function Account(): JSX.Element {
       .getProfile()
       .then((p) => {
         setProfile(p)
+        setError(null)
         writeCache('me', p)
       })
-      .catch((e) => notify('Couldn’t load profile: ' + e.message, 'error'))
+      .catch((e) => {
+        setError(e.message)
+        notify('Couldn’t load profile: ' + e.message, 'error')
+      })
   }
 
   // Fetch (or refresh) the profile whenever auth flips to signed-in — including
@@ -97,6 +103,7 @@ export default function Account(): JSX.Element {
   }, [q, allTags, profile])
   // Whether the typed text matches a real tag (only judged once the catalog is in).
   const known = !q || allTags.length === 0 || allTags.some((t) => t.toLowerCase() === q)
+  const sugOpen = showSug && suggestions.length > 0
 
   const signOut = (): void => {
     window.api
@@ -113,14 +120,9 @@ export default function Account(): JSX.Element {
     return (
       <div className="page">
         <PageHeader kicker="you" kickerIndex={10} title="Account" />
-        <EmptyState
+        <SignInGate
           message="Sign in to see this"
           hint="Your profile, stats, and preferences live behind your RedGifs account."
-          action={
-            <button className="btn btn-ember" onClick={() => window.api.login()}>
-              Sign in
-            </button>
-          }
         />
       </div>
     )
@@ -142,7 +144,20 @@ export default function Account(): JSX.Element {
     <div className="page">
       <PageHeader kicker="you" kickerIndex={10} title="Account" />
 
-      {authed === null && <div style={loadingStyle}>Loading…</div>}
+      {authed === null && !profile && <div className="readout">Loading…</div>}
+
+      {/* Surface a failed load when we have nothing cached to fall back on. */}
+      {!profile && error && authed && (
+        <EmptyState
+          message="Couldn’t load your account"
+          hint={error}
+          action={
+            <button className="btn" onClick={refetch}>
+              Try again
+            </button>
+          }
+        />
+      )}
 
       {profile && (
         <>
@@ -157,30 +172,30 @@ export default function Account(): JSX.Element {
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={handleStyle}>@{profile.username}</div>
               {profile.name && <div style={nameStyle}>{profile.name}</div>}
-              <div style={statRowStyle}>
-                {stats.map(([n, label], i) => (
-                  <span key={label} style={{ whiteSpace: 'nowrap' }}>
-                    {i > 0 && <span style={dotStyle}>·</span>}
-                    <span style={statNumStyle}>{formatCount(n)}</span> {label}
-                  </span>
+              <div className="statset" style={{ marginTop: 16 }}>
+                {stats.map(([n, label]) => (
+                  <div key={label} className="stat">
+                    <span className="stat-n">{formatCount(n)}</span>
+                    <span className="stat-l">{label}</span>
+                  </div>
                 ))}
               </div>
             </div>
           </div>
 
           <section style={{ marginTop: 30 }}>
-            <div style={sectionLabelStyle}>Blocked tags</div>
+            <div className="section-label">Blocked tags</div>
             <p style={sectionHintStyle}>Add a tag to hide it from your feeds.</p>
             {profile.blockedTags.length > 0 && (
-              <div style={chipRowStyle}>
+              <div className="chip-row" style={{ marginBottom: 14 }}>
                 {profile.blockedTags.map((t) => (
-                  <span key={t} style={chipStyle}>
+                  <span key={t} className="chip">
                     {t}
                     <button
                       type="button"
                       aria-label={'Remove ' + t}
                       onClick={() => removeTag(t)}
-                      style={chipRemoveStyle}
+                      className="chip-x"
                     >
                       ×
                     </button>
@@ -194,6 +209,10 @@ export default function Account(): JSX.Element {
                   <input
                     style={{ width: '100%' }}
                     placeholder="Search tags to block…"
+                    role="combobox"
+                    aria-expanded={sugOpen}
+                    aria-autocomplete="list"
+                    aria-controls="blocked-tag-suggestions"
                     value={tag}
                     onChange={(e) => {
                       setTag(e.target.value)
@@ -206,12 +225,14 @@ export default function Account(): JSX.Element {
                       else if (e.key === 'Escape') setShowSug(false)
                     }}
                   />
-                  {showSug && suggestions.length > 0 && (
-                    <div style={sugBoxStyle}>
+                  {sugOpen && (
+                    <div id="blocked-tag-suggestions" role="listbox" style={sugBoxStyle}>
                       {suggestions.map((s) => (
                         <button
                           key={s}
                           type="button"
+                          role="option"
+                          aria-selected={false}
                           style={sugItemStyle}
                           // mousedown (not click) so it fires before the input's blur
                           onMouseDown={(e) => {
@@ -239,11 +260,11 @@ export default function Account(): JSX.Element {
 
           {profile.preferences.length > 0 && (
             <section style={{ marginTop: 34 }}>
-              <div style={sectionLabelStyle}>Preferences</div>
+              <div className="section-label">Preferences</div>
               <p style={sectionHintStyle}>Content preferences from your RedGifs account.</p>
-              <div style={chipRowStyle}>
+              <div className="chip-row">
                 {profile.preferences.map((p) => (
-                  <span key={p} style={chipStyle}>
+                  <span key={p} className="chip">
                     {p}
                   </span>
                 ))}
@@ -252,7 +273,7 @@ export default function Account(): JSX.Element {
           )}
 
           <section style={{ marginTop: 34 }}>
-            <div style={sectionLabelStyle}>Session</div>
+            <div className="section-label">Session</div>
             <p style={sectionHintStyle}>
               Sign out and clear the stored RedGifs token from this device.
             </p>
@@ -264,13 +285,6 @@ export default function Account(): JSX.Element {
       )}
     </div>
   )
-}
-
-const loadingStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 12,
-  letterSpacing: '0.04em',
-  color: 'var(--dim)'
 }
 
 const cardStyle: CSSProperties = {
@@ -321,77 +335,12 @@ const nameStyle: CSSProperties = {
   color: 'var(--mut)'
 }
 
-const statRowStyle: CSSProperties = {
-  marginTop: 14,
-  fontFamily: 'var(--mono)',
-  fontSize: 11.5,
-  letterSpacing: '0.03em',
-  color: 'var(--mut)',
-  display: 'flex',
-  flexWrap: 'wrap',
-  rowGap: 4
-}
-
-const statNumStyle: CSSProperties = {
-  color: 'var(--ink)'
-}
-
-const dotStyle: CSSProperties = {
-  color: 'var(--dim)',
-  margin: '0 10px'
-}
-
-const sectionLabelStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 11,
-  letterSpacing: '0.12em',
-  textTransform: 'uppercase',
-  color: 'var(--ember)',
-  marginBottom: 8
-}
-
 const sectionHintStyle: CSSProperties = {
   margin: '0 0 12px',
   fontSize: 13,
   lineHeight: 1.5,
   color: 'var(--dim)',
   maxWidth: 520
-}
-
-const chipRowStyle: CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 8,
-  marginBottom: 14
-}
-
-const chipStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  fontFamily: 'var(--mono)',
-  fontSize: 12,
-  letterSpacing: '0.03em',
-  color: 'var(--ink)',
-  background: 'var(--panel)',
-  border: '1px solid var(--line)',
-  borderRadius: 999,
-  padding: '4px 10px'
-}
-
-const chipRemoveStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  width: 16,
-  height: 16,
-  padding: 0,
-  fontSize: 14,
-  lineHeight: 1,
-  color: 'var(--mut)',
-  background: 'none',
-  border: 'none',
-  cursor: 'pointer'
 }
 
 const sugBoxStyle: CSSProperties = {
@@ -429,5 +378,5 @@ const unavailStyle: CSSProperties = {
   fontFamily: 'var(--mono)',
   fontSize: 11,
   letterSpacing: '0.02em',
-  color: 'var(--yellow, #d8a657)'
+  color: 'var(--warn)'
 }

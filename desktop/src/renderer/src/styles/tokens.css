@@ -19,6 +19,7 @@
   --ember: #d8563d;
   --ember2: #ef8a6d;
   --ok: #7fae5a;
+  --warn: #d8a657;
   --danger: #d8563d;
   --radius: 9px;
 
@@ -545,13 +546,22 @@ input::placeholder { color: var(--dim); }
   gap: 12px;
 }
 
-/* Editorial: first tile spans 2 cols and stands taller; the rest flow after. */
+/* Editorial: a real magazine mosaic. A 2×2 hero opens the feed, then recurring
+   full-height "feature" tiles (span 2 rows) keep the big/small rhythm running
+   down the whole column. `dense` backfills the gaps the spans open up. */
+.feed-editorial {
+  grid-auto-flow: row dense;
+}
 .feed-editorial .feed-hero {
   grid-column: span 2;
   grid-row: span 2;
 }
-/* Give the hero tile something to fill the doubled row height. */
-.feed-editorial .feed-hero .pcard {
+.feed-editorial .feed-tall {
+  grid-row: span 2;
+}
+/* Give the spanning tiles something to fill their doubled row height. */
+.feed-editorial .feed-hero .pcard,
+.feed-editorial .feed-tall .pcard {
   aspect-ratio: auto;
   height: 100%;
 }
@@ -560,9 +570,13 @@ input::placeholder { color: var(--dim); }
     grid-column: span 1;
     grid-row: span 1;
   }
-  .feed-editorial .feed-hero .pcard {
+  .feed-editorial .feed-hero .pcard,
+  .feed-editorial .feed-tall .pcard {
     aspect-ratio: 9 / 16;
     height: auto;
+  }
+  .feed-editorial .feed-tall {
+    grid-row: span 1;
   }
 }
 
@@ -871,5 +885,231 @@ input::placeholder { color: var(--dim); }
   letter-spacing: 0.04em;
   color: var(--mut);
   margin-top: 2px;
+}
+
+/* ===========================================================================
+   Shared component layer (consistency pass)
+   Classes below replace the per-page inline styling the app had grown. Every
+   value derives from a token — no page should hand-roll these again.
+   =========================================================================== */
+
+/* --- Header control cluster (lives in PageHeader `right`) ------------------- */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* --- Styled native select (the app's `.seg` sibling for long option lists) -- */
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 7px 30px 7px 12px;
+  cursor: pointer;
+  outline: none;
+  /* chevron drawn inline so we depend on no asset */
+  background-image: linear-gradient(45deg, transparent 50%, var(--mut) 50%),
+    linear-gradient(135deg, var(--mut) 50%, transparent 50%);
+  background-position: right 14px center, right 9px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  transition: border-color 0.15s ease;
+}
+.select:hover { border-color: var(--line2); }
+.select:focus { border-color: var(--ember); }
+
+/* --- Filter / tag chip (pill) ---------------------------------------------- */
+.chip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  color: var(--mut);
+  background: var(--bg);
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.chip:hover { color: var(--ember); border-color: var(--ember); }
+.chip.on { color: #170a08; background: var(--ember); border-color: var(--ember); }
+.chip-x {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.chip-x:hover { opacity: 1; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* --- Stat readouts (creator/account/history tiles) ------------------------- */
+.statset { display: flex; flex-wrap: wrap; gap: 26px; }
+.stat { display: flex; flex-direction: column; gap: 3px; }
+.stat-n {
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 560;
+  color: var(--cream);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.stat-l {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--mut);
+}
+/* Bordered stat tile variant (History) */
+.stat-tile {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+
+/* --- Form field ------------------------------------------------------------ */
+.field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 20px; max-width: 460px; }
+.field-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.field-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--dim);
+  line-height: 1.5;
+}
+.field-check { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; cursor: pointer; font-size: 13.5px; color: var(--ink); }
+.field-check input { width: auto; }
+
+/* --- Filter toolbar (Library) ---------------------------------------------- */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+.toolbar .field-search { flex: 1 1 240px; }
+.toolbar .readout { margin-left: auto; }
+
+/* --- Mono readout (counts, progress text) ---------------------------------- */
+.readout {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Eyebrow section label (in-page) --------------------------------------- */
+.section-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--dim);
+  margin-bottom: 12px;
+}
+
+/* --- Generic card grid + tile (niche/collection/category cards) ------------ */
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+}
+.tile {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.tile:hover { border-color: var(--line2); transform: translateY(-2px); }
+.tile-cover {
+  position: relative;
+  width: 100%;
+  border-radius: 7px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line2);
+}
+.tile-cover.ar-16-9 { aspect-ratio: 16 / 9; }
+.tile-cover.ar-3-4 { aspect-ratio: 3 / 4; }
+.tile-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tile-title {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 560;
+  color: var(--cream);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.tile-sub {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  color: var(--mut);
+  margin-top: 6px;
+}
+
+/* --- Library-list row (History / Downloads) -------------------------------- */
+.list-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.list-row + .list-row { margin-top: 8px; }
+.list-thumb { width: 60px; height: 38px; flex: none; border-radius: 5px; object-fit: cover; background: var(--line); }
+.list-main { flex: 1; min-width: 0; }
+.list-title { font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list-sub { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.03em; color: var(--dim); margin-top: 2px; }
+
+/* --- Loading skeleton ------------------------------------------------------ */
+@keyframes shimmer {
+  from { background-position: -420px 0; }
+  to { background-position: 420px 0; }
+}
+.skel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  gap: 12px;
+}
+.skel {
+  border-radius: var(--radius);
+  background: linear-gradient(100deg, var(--panel) 30%, var(--line) 50%, var(--panel) 70%);
+  background-size: 840px 100%;
+  animation: shimmer 1.3s linear infinite;
+}
+.skel-tile { aspect-ratio: 9 / 16; }
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
 }
 
