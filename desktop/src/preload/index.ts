@@ -7,6 +7,8 @@ const api: RedgifsApi = {
   authStatus: () => ipcRenderer.invoke(IPC.authStatus),
 
   searchUsers: (query) => ipcRenderer.invoke(IPC.searchUsers, query),
+  searchSuggest: (query) => ipcRenderer.invoke(IPC.searchSuggest, query),
+  searchNiches: (query) => ipcRenderer.invoke(IPC.searchNiches, query),
   getUserContent: (username, order, page) =>
     ipcRenderer.invoke(IPC.getUserContent, username, order, page),
   getProfile: () => ipcRenderer.invoke(IPC.getProfile),

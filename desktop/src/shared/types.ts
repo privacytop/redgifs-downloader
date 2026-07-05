@@ -46,6 +46,12 @@ export interface ContentResponse {
   total: number
 }
 
+/** A tag suggestion from the search bar autocomplete. */
+export interface TagSuggestion {
+  text: string
+  gifs: number
+}
+
 /** Progress of the background library indexer (all collections + liked). */
 export interface LibraryProgress {
   phase: 'collections' | 'liked' | 'done'

@@ -30,6 +30,8 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   auth.init()
 
   ipcMain.handle(IPC.searchUsers, (_e, q: string) => api.searchUsers(q))
+  ipcMain.handle(IPC.searchSuggest, (_e, q: string) => api.searchSuggest(q))
+  ipcMain.handle(IPC.searchNiches, (_e, q: string) => api.searchNiches(q))
   ipcMain.handle(IPC.getUserContent, (_e, u: string, o: string, p: number) => api.getUserContent(u, o, p))
   ipcMain.handle(IPC.getProfile, () => api.getProfile())
   ipcMain.handle(IPC.getLikes, async (_e, p: number) => {

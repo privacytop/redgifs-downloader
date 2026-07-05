@@ -1,5 +1,5 @@
 import type {
-  Collection, Content, ContentResponse, Niche, UserProfile, UserResult
+  Collection, Content, ContentResponse, Niche, TagSuggestion, UserProfile, UserResult
 } from '../shared/types'
 import { RateLimiter } from './ratelimit'
 import { decodeJwt } from './jwt'
@@ -199,10 +199,29 @@ export class RedgifsApi {
     params.order = opts.order ?? 'latest'
     if (opts.page) params.page = String(opts.page)
     if (opts.verified) params.verified = 'y'
-    // Both map to the `search_text` param; an explicit `search` wins over `tags`.
-    if (opts.search) params.search_text = opts.search
-    else if (opts.tags) params.search_text = opts.tags
+    // The live search param is `query` (`search_text` is legacy). Explicit
+    // `search` wins over `tags`; multiple tags are space-separated.
+    if (opts.search) params.query = opts.search
+    else if (opts.tags) params.query = opts.tags
     return toContentResponse(await this.request<RawContentResponse>('GET', '/gifs/search', params))
+  }
+
+  /** Tag/name autocomplete for a query (RedGifs search bar suggestions). */
+  async searchSuggest(query: string): Promise<TagSuggestion[]> {
+    if (!query.trim()) return []
+    const data = await this.request<Array<{ type?: string; text?: string; gifs?: number }>>(
+      'GET', '/search/suggest', { query })
+    return (Array.isArray(data) ? data : [])
+      .filter((s) => s.type === 'tag' && s.text)
+      .map((s) => ({ text: s.text as string, gifs: s.gifs ?? 0 }))
+  }
+
+  /** Niches matching a query. */
+  async searchNiches(query: string): Promise<Niche[]> {
+    if (!query.trim()) return []
+    const data = await this.request<{ niches?: any[] }>('GET', '/niches/search',
+      { order: 'best_match', page: '1', query })
+    return (data.niches ?? []).map(toNiche)
   }
 
   async searchCreators(opts: { order?: string; page?: number; verified?: boolean }): Promise<UserResult[]> {

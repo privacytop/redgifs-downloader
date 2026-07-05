@@ -14,6 +14,7 @@ import type {
   Niche,
   Settings,
   Statistics,
+  TagSuggestion,
   ToastPayload,
   UserProfile,
   UserResult
@@ -26,6 +27,8 @@ export const IPC = {
   authStatus: 'auth:status',
 
   searchUsers: 'api:searchUsers',
+  searchSuggest: 'api:searchSuggest',
+  searchNiches: 'api:searchNiches',
   getUserContent: 'api:getUserContent',
   getProfile: 'api:getProfile',
   getCollections: 'api:getCollections',
@@ -105,6 +108,8 @@ export interface RedgifsApi {
   authStatus(): Promise<AuthStatus>
 
   searchUsers(query: string): Promise<UserResult[]>
+  searchSuggest(query: string): Promise<TagSuggestion[]>
+  searchNiches(query: string): Promise<Niche[]>
   getUserContent(username: string, order: string, page: number): Promise<ContentResponse>
   getProfile(): Promise<UserProfile>
   getCollections(username?: string): Promise<Collection[]>
