@@ -53,15 +53,15 @@ export default function CollectionDetail({
         <EmptyState message="This collection is empty" hint="Nothing has been added here yet." />
       )}
 
-      <FeedGrid items={feed.contents} mode={mode} onOpen={feed.openAt} onDownload={dl} />
-
-      {feed.hasMore && (
-        <div style={{ textAlign: 'center', marginTop: 24 }}>
-          <button className="btn" onClick={feed.loadMore} disabled={feed.loading}>
-            {feed.loading ? 'Loading…' : 'Load more'}
-          </button>
-        </div>
-      )}
+      <FeedGrid
+        items={feed.contents}
+        mode={mode}
+        onOpen={feed.openAt}
+        onDownload={dl}
+        onEndReached={feed.loadMore}
+        hasMore={feed.hasMore}
+        loading={feed.loading}
+      />
     </div>
   )
 }

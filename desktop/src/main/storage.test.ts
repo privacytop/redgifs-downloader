@@ -48,6 +48,10 @@ describe('SqliteStorage', () => {
     s.removeGifMembership('g1', 'collection', 'c1')
     expect(s.gifCollectionIds('g1')).toEqual([])
     expect(s.searchCachedGifs({ sources: [{ type: 'collection', id: 'c1' }] })).toHaveLength(0)
+
+    // add persists the membership (e.g. after adding a gif to a collection)
+    s.addGifMembership('g1', 'collection', 'c2')
+    expect(s.gifCollectionIds('g1')).toEqual(['c2'])
   })
 
   it('persists and clears the user token', () => {

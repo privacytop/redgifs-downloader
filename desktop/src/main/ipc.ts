@@ -82,8 +82,12 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.followUser, (_e, u: string) => api.followUser(u))
   ipcMain.handle(IPC.unfollowUser, (_e, u: string) => api.unfollowUser(u))
   ipcMain.handle(IPC.getFollows, () => api.getFollows())
-  ipcMain.handle(IPC.addToCollection, (_e, folderId: string, gifId: string) =>
-    api.addToCollection(folderId, gifId))
+  ipcMain.handle(IPC.addToCollection, async (_e, folderId: string, gifId: string) => {
+    await api.addToCollection(folderId, gifId)
+    // Persist the membership so reopening the menu still shows the ✓ and lets
+    // the user toggle it back off.
+    storage.addGifMembership(gifId, 'collection', folderId)
+  })
   ipcMain.handle(IPC.removeFromCollection, async (_e, folderId: string, gifId: string) => {
     await api.removeFromCollection(folderId, gifId)
     // Keep the local membership cache in sync so ✓ markers update immediately.

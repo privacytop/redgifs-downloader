@@ -115,8 +115,11 @@ export class RedgifsApi {
   }
 
   async searchUsers(query: string): Promise<UserResult[]> {
-    const data = await this.request<{ users: any[] }>('GET', '/users/search', { search_text: query, count: '20' })
-    return (data.users ?? []).map(toUserResult)
+    // Creator search lives at /creators/search?query= and returns matches under
+    // `items` (the old /users/search path 404s).
+    const data = await this.request<{ items?: any[]; users?: any[] }>('GET', '/creators/search',
+      { query, count: '20' })
+    return (data.items ?? data.users ?? []).map(toUserResult)
   }
 
   async getUserContent(username: string, order: string, page: number): Promise<ContentResponse> {

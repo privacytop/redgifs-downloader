@@ -84,6 +84,26 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
 
   const current = items[index]
 
+  // Latest mute preference, read inside startPlayback without re-creating it.
+  const mutedRef = useRef(muted)
+  mutedRef.current = muted
+
+  // Start playback reliably: muted autoplay is always permitted by Chromium, so
+  // begin muted, then restore the user's sound preference once it's actually
+  // playing (unmuting an already-playing element needs no user gesture). Wired
+  // to the video's onCanPlay so it runs the moment the media is ready.
+  const startPlayback = useCallback((): void => {
+    const v = videoRef.current
+    if (!v) return
+    v.muted = true
+    v.play()
+      .then(() => {
+        v.muted = mutedRef.current
+        setPlaying(true)
+      })
+      .catch(() => setPlaying(false))
+  }, [])
+
   // --- pagination: append more when nearing the end ------------------------
   const maybeLoadMore = useCallback(
     async (nextIndex: number): Promise<void> => {
@@ -130,13 +150,9 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     setCurrentTime(0)
     setDuration(0)
     setCollectionOpen(false)
-    // React's autoPlay attribute is unreliable on the first mount and across
-    // remounts, so drive play() imperatively for every clip (incl. the first).
-    const v = videoRef.current
-    if (v) {
-      v.muted = muted
-      v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
-    }
+    // Playback is kicked off from the video's onCanPlay (startPlayback) so it
+    // fires once the element is actually ready — calling play() here races the
+    // media load and silently rejects on the first mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index])
 
@@ -373,6 +389,7 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
             loop
             playsInline
             onClick={togglePlay}
+            onCanPlay={startPlayback}
             onLoadedMetadata={onLoadedMetadata}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
