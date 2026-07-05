@@ -1,0 +1,50 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b1613"/>
+      <stop offset="1" stop-color="#0e0c0a"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F4813E"/>
+      <stop offset="1" stop-color="#D23E1C"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.42" r="0.55">
+      <stop offset="0" stop-color="#E4572E" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#E4572E" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- rounded-square backdrop -->
+  <rect x="0" y="0" width="1024" height="1024" rx="232" ry="232" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="232" ry="232" fill="url(#glow)"/>
+  <!-- hairline ember frame -->
+  <rect x="12" y="12" width="1000" height="1000" rx="222" ry="222" fill="none"
+        stroke="#E4572E" stroke-opacity="0.28" stroke-width="4"/>
+
+  <!-- download mark: arrow + tray, ember -->
+  <g fill="url(#ember)">
+    <!-- stem + arrowhead as one shape -->
+    <path d="M462 250
+             h100
+             a20 20 0 0 1 20 20
+             v240
+             h96
+             a16 16 0 0 1 12 27
+             l-166 178
+             a20 20 0 0 1 -29 0
+             l-166 -178
+             a16 16 0 0 1 12 -27
+             h96
+             v-240
+             a20 20 0 0 1 20 -20 z"/>
+  </g>
+  <!-- tray / baseline (open box) -->
+  <path d="M300 720
+           v70
+           a24 24 0 0 0 24 24
+           h376
+           a24 24 0 0 0 24 -24
+           v-70"
+        fill="none" stroke="url(#ember)" stroke-width="52"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

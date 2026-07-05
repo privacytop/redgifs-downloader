@@ -45,7 +45,7 @@
     "productName": "RedGifs Downloader",
     "directories": {
       "output": "release",
-      "buildResources": "build"
+      "buildResources": "build-assets"
     },
     "files": [
       "out/**/*",
