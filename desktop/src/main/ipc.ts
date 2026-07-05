@@ -73,7 +73,7 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.getUser, (_e, u: string) => api.getUser(u))
   ipcMain.handle(IPC.getMyContent, (_e, opts) => api.getMyContent(opts))
   ipcMain.handle(IPC.getFollowing, (_e, p: number) => api.getFollowing(p))
-  ipcMain.handle(IPC.getTrendingCreators, (_e, p: number) => api.getTrendingCreators(p))
+  ipcMain.handle(IPC.getTrending, (_e, p: number) => api.getTrending(p))
   ipcMain.handle(IPC.getFollowers, (_e, p: number) => api.getFollowers(p))
 
   ipcMain.handle(IPC.getNichesTrending, () => api.getNichesTrending())
