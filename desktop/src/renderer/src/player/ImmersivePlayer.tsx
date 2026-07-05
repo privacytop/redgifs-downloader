@@ -274,9 +274,18 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     }
   }, [])
 
-  // Keep the element's muted flag in sync + persist the choice.
+  // Keep the element's muted flag in sync with the mute button + persist it.
+  // IMPORTANT: skip the initial mount — startPlayback deliberately starts muted
+  // (so muted autoplay is allowed) and restores the preference once playing. If
+  // this effect wrote `muted` on mount it would un-mute mid-startup and the
+  // browser would block the autoplay.
+  const mutedSynced = useRef(false)
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = muted
+    if (mutedSynced.current) {
+      if (videoRef.current) videoRef.current.muted = muted
+    } else {
+      mutedSynced.current = true
+    }
     try {
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
     } catch {
