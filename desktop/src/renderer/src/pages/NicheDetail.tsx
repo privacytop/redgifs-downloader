@@ -1,132 +1,73 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
+import ViewToggle from '../components/ViewToggle'
+import FeedGrid from '../components/FeedGrid'
 import EmptyState from '../components/EmptyState'
-import { useNav } from '../context/nav'
-import { formatCount } from '../lib/format'
-import type { Niche } from '@shared/types'
+import { usePlayableFeed } from '../hooks/usePlayableFeed'
+import { useViewMode } from '../hooks/useViewMode'
+import { useNotify } from '../context/notify'
+import type { Content } from '@shared/types'
 
-/**
- * Niche detail page. There is no niche-content endpoint, so this surfaces the
- * niche's related niches as a responsive grid of cards.
- */
+const ORDERS: { id: string; label: string }[] = [
+  { id: 'hot', label: 'Hot' },
+  { id: 'new', label: 'New' },
+  { id: 'best', label: 'Best' },
+  { id: 'top', label: 'Top' }
+]
+
+/** A niche's gifs, with an order selector; opening a clip enables niche voting. */
 export default function NicheDetail({ id, title }: { id: string; title: string }): JSX.Element {
-  const { navigate } = useNav()
-  const [related, setRelated] = useState<Niche[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const notify = useNotify()
+  const [mode, setMode] = useViewMode('niche', 'grid')
+  const [order, setOrder] = useState('hot')
 
-  useEffect(() => {
-    let alive = true
-    setLoading(true)
-    setError(null)
+  const feed = usePlayableFeed(
+    (p) => window.api.getNicheGifs(id, order, p),
+    title,
+    [id, order],
+    { nicheId: id }
+  )
+
+  const dl = (c: Content): void => {
     window.api
-      .getRelatedNiches(id)
-      .then((niches) => {
-        if (!alive) return
-        setRelated(niches)
-      })
-      .catch((e: Error) => {
-        if (!alive) return
-        setError(e.message)
-      })
-      .finally(() => {
-        if (alive) setLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [id])
+      .downloadContents([c], c.username)
+      .then(() => notify('Saving @' + c.username, 'success'))
+      .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
+  }
 
   return (
     <div className="page">
-      <PageHeader kicker="niche" title={title} />
+      <PageHeader
+        kicker="niche"
+        title={title}
+        right={
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div className="seg">
+              {ORDERS.map((o) => (
+                <button key={o.id} className={o.id === order ? 'on' : ''} onClick={() => setOrder(o.id)}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <ViewToggle value={mode} onChange={setMode} />
+          </div>
+        }
+      />
 
-      {error && <EmptyState message="Couldn't load related niches" hint={error} />}
-
-      {!error && !loading && related.length === 0 && (
-        <EmptyState
-          message="No related niches"
-          hint="Nothing else is linked to this niche yet."
-        />
+      {feed.error && <EmptyState message="Couldn't load this niche" hint={feed.error} />}
+      {!feed.error && feed.contents.length === 0 && !feed.loading && (
+        <EmptyState message="No gifs here yet" hint="Nothing has been added to this niche." />
       )}
 
-      {!error && related.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-            gap: 14
-          }}
-        >
-          {related.map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              onClick={() => navigate({ name: 'niche', id: n.id, title: n.name })}
-              style={{
-                textAlign: 'left',
-                background: 'var(--panel)',
-                border: '1px solid var(--line)',
-                borderRadius: 12,
-                padding: '16px 16px 14px',
-                cursor: 'pointer',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                transition: 'border-color .15s ease, transform .15s ease'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--line2)'
-                e.currentTarget.style.transform = 'translateY(-2px)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--line)'
-                e.currentTarget.style.transform = 'translateY(0)'
-              }}
-            >
-              <div
-                style={{
-                  fontFamily: 'var(--serif)',
-                  fontSize: 18,
-                  fontWeight: 560,
-                  color: 'var(--cream)',
-                  lineHeight: 1.2
-                }}
-              >
-                {n.name}
-              </div>
-              {n.description && (
-                <div
-                  style={{
-                    fontSize: 12.5,
-                    color: 'var(--mut)',
-                    lineHeight: 1.45,
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    overflow: 'hidden'
-                  }}
-                >
-                  {n.description}
-                </div>
-              )}
-              <div
-                style={{
-                  fontFamily: 'var(--mono)',
-                  fontSize: 10.5,
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
-                  color: 'var(--dim)',
-                  marginTop: 'auto',
-                  paddingTop: 6
-                }}
-              >
-                {formatCount(n.subscribers)} subs
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+      <FeedGrid
+        items={feed.contents}
+        mode={mode}
+        onOpen={feed.openAt}
+        onDownload={dl}
+        onEndReached={feed.loadMore}
+        hasMore={feed.hasMore}
+        loading={feed.loading}
+      />
     </div>
   )
 }

@@ -56,6 +56,7 @@ export const IPC = {
   getMyNiches: 'api:getMyNiches',
   getFollowingNiches: 'api:getFollowingNiches',
   getRelatedNiches: 'api:getRelatedNiches',
+  getNicheGifs: 'api:getNicheGifs',
   getNichePreviews: 'api:getNichePreviews',
   nicheFeedback: 'api:nicheFeedback',
 
@@ -141,6 +142,7 @@ export interface RedgifsApi {
   getMyNiches(): Promise<Niche[]>
   getFollowingNiches(): Promise<Niche[]>
   getRelatedNiches(id: string): Promise<Niche[]>
+  getNicheGifs(id: string, order: string, page: number): Promise<ContentResponse>
   getNichePreviews(opts: { order?: string; page?: number; count?: number }): Promise<Niche[]>
   nicheFeedback(nicheId: string, gifId: string, state: 'up' | 'down'): Promise<void>
 

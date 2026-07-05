@@ -38,6 +38,7 @@ const api: RedgifsApi = {
   getMyNiches: () => ipcRenderer.invoke(IPC.getMyNiches),
   getFollowingNiches: () => ipcRenderer.invoke(IPC.getFollowingNiches),
   getRelatedNiches: (id) => ipcRenderer.invoke(IPC.getRelatedNiches, id),
+  getNicheGifs: (id, order, page) => ipcRenderer.invoke(IPC.getNicheGifs, id, order, page),
   getNichePreviews: (opts) => ipcRenderer.invoke(IPC.getNichePreviews, opts),
   nicheFeedback: (nicheId, gifId, state) =>
     ipcRenderer.invoke(IPC.nicheFeedback, nicheId, gifId, state),

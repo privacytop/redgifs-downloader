@@ -344,6 +344,11 @@ export class RedgifsApi {
   async getRelatedNiches(id: string): Promise<Niche[]> {
     return this.niches('GET', `/niches/${encodeURIComponent(id)}/related`)
   }
+  /** Gifs inside a niche (order: hot | new | best | top | latest). */
+  async getNicheGifs(id: string, order: string, page: number): Promise<ContentResponse> {
+    return toContentResponse(await this.request<RawContentResponse>('GET',
+      `/niches/${encodeURIComponent(id)}/gifs`, { order, count: '50', page: String(page) }))
+  }
   async getNichePreviews(opts: { order?: string; page?: number; count?: number }): Promise<Niche[]> {
     const params: Record<string, string> = { count: String(opts.count ?? 80) }
     if (opts.order) params.order = opts.order

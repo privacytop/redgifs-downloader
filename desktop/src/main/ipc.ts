@@ -81,6 +81,8 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.getMyNiches, () => api.getMyNiches())
   ipcMain.handle(IPC.getFollowingNiches, () => api.getFollowingNiches())
   ipcMain.handle(IPC.getRelatedNiches, (_e, id: string) => api.getRelatedNiches(id))
+  ipcMain.handle(IPC.getNicheGifs, (_e, id: string, order: string, p: number) =>
+    api.getNicheGifs(id, order, p))
   ipcMain.handle(IPC.getNichePreviews, (_e, opts) => api.getNichePreviews(opts))
   ipcMain.handle(IPC.nicheFeedback, (_e, nicheId: string, gifId: string, state: 'up' | 'down') =>
     api.nicheFeedback(nicheId, gifId, state))
