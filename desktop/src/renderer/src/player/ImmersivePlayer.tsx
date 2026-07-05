@@ -5,6 +5,7 @@ import { useNotify } from '../context/notify'
 import { useNav } from '../context/nav'
 import { useBlockedTags } from '../context/blockedTags'
 import { formatViews, formatDuration } from '../lib/format'
+import { readCache, writeCache } from '../lib/cache'
 import CollectionMenu from './CollectionMenu'
 
 interface ImmersivePlayerProps {
@@ -35,9 +36,24 @@ function loadFollows(): Promise<Set<string>> {
   return followsPromise
 }
 
-// Session-local set of gif ids the user has liked, so the heart stays lit when
-// scrolling away and back (feeds don't return per-gif like state).
+// Set of gif ids the user has liked, so the heart reflects both in-session
+// likes and ones from the past (feeds don't return per-gif like state). Seeded
+// from cache instantly, then reconciled with the server once per app run.
 const likedIds = new Set<string>()
+let likedIdsPromise: Promise<void> | null = null
+function loadLikedIds(): Promise<void> {
+  if (!likedIdsPromise) {
+    ;(readCache<string[]>('likedIds') ?? []).forEach((id) => likedIds.add(id))
+    likedIdsPromise = window.api
+      .getLikedIds()
+      .then((ids) => {
+        ids.forEach((id) => likedIds.add(id))
+        writeCache('likedIds', [...likedIds])
+      })
+      .catch(() => undefined)
+  }
+  return likedIdsPromise
+}
 
 /**
  * Full-screen immersive video player. Wheel + Arrow up/down move between clips
@@ -97,6 +113,9 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   // Latest mute preference, read inside startPlayback without re-creating it.
   const mutedRef = useRef(muted)
   mutedRef.current = muted
+  // Latest clip id, so the async liked-ids load can relight the right heart.
+  const currentIdRef = useRef(current?.id)
+  currentIdRef.current = current?.id
 
   // Start playback reliably: muted autoplay is always permitted by Chromium, so
   // begin muted, then restore the user's sound preference once it's actually
@@ -223,6 +242,18 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     let alive = true
     void loadFollows().then((set) => {
       if (alive) setFollows(set)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  // Load the user's liked-gif ids once, then light the heart for the current
+  // clip if it was already liked in the past.
+  useEffect(() => {
+    let alive = true
+    void loadLikedIds().then(() => {
+      if (alive && currentIdRef.current) setLiked(likedIds.has(currentIdRef.current))
     })
     return () => {
       alive = false
@@ -605,18 +636,16 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
         </div>
 
         <button
-          className={`btn ${similar ? 'on' : ''}`}
           type="button"
-          style={{ ...actionBtnStyle, width: '100%', ...(similar ? followingStyle : null) }}
+          style={{ ...similarToggleStyle, ...(similar ? similarToggleOnStyle : null) }}
           onClick={toggleSimilar}
           aria-pressed={similar}
-          title={similar ? 'Back to the feed' : 'Scroll into similar gifs'}
+          title={similar ? 'Back to the feed' : 'Scroll into gifs similar to this one'}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={actionIconStyle}>
-            <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z" />
-            <path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z" />
-          </svg>
-          {similar ? 'Back to feed' : 'See similar'}
+          <span style={{ ...similarTrackStyle, ...(similar ? similarTrackOnStyle : null) }} aria-hidden="true">
+            <span style={{ ...similarDotStyle, ...(similar ? similarDotOnStyle : null) }} />
+          </span>
+          {similar ? 'Similar' : 'See similar'}
         </button>
 
         <div className="player-stats">
@@ -759,3 +788,51 @@ const followingStyle: CSSProperties = {
   color: 'var(--ember)',
   borderColor: 'var(--ember)'
 }
+
+// Compact switch-style toggle for "See similar".
+const similarToggleStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  alignSelf: 'flex-start',
+  padding: '6px 12px',
+  fontFamily: 'var(--mono)',
+  fontSize: 12,
+  letterSpacing: '0.02em',
+  borderRadius: 999,
+  cursor: 'pointer',
+  background: 'var(--panel)',
+  border: '1px solid var(--line2)',
+  color: 'var(--mut)'
+}
+
+const similarToggleOnStyle: CSSProperties = {
+  background: 'rgba(228, 87, 46, 0.16)',
+  borderColor: 'var(--ember)',
+  color: 'var(--ember)'
+}
+
+const similarTrackStyle: CSSProperties = {
+  position: 'relative',
+  flex: 'none',
+  width: 24,
+  height: 14,
+  borderRadius: 999,
+  background: 'var(--line2)',
+  transition: 'background 120ms ease'
+}
+
+const similarTrackOnStyle: CSSProperties = { background: 'var(--ember)' }
+
+const similarDotStyle: CSSProperties = {
+  position: 'absolute',
+  top: 2,
+  left: 2,
+  width: 10,
+  height: 10,
+  borderRadius: '50%',
+  background: 'var(--cream)',
+  transition: 'transform 120ms ease'
+}
+
+const similarDotOnStyle: CSSProperties = { transform: 'translateX(10px)' }

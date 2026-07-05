@@ -17,6 +17,7 @@ const api: RedgifsApi = {
   getCollectionContent: (collectionId, page) =>
     ipcRenderer.invoke(IPC.getCollectionContent, collectionId, page),
   getLikes: (page) => ipcRenderer.invoke(IPC.getLikes, page),
+  getLikedIds: () => ipcRenderer.invoke(IPC.getLikedIds),
 
   getForYou: (page) => ipcRenderer.invoke(IPC.getForYou, page),
   searchGifs: (opts) => ipcRenderer.invoke(IPC.searchGifs, opts),

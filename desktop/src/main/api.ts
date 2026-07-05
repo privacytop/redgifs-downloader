@@ -144,6 +144,23 @@ export class RedgifsApi {
       { page: String(page), count: '80' }))
   }
 
+  /** Ids of every gif the signed-in user has liked (paged, capped for cost). */
+  async getLikedIds(): Promise<string[]> {
+    const ids: string[] = []
+    const MAX_PAGES = 25 // ~2000 likes; enough to light the heart on browse feeds
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      let res: ContentResponse
+      try {
+        res = await this.getLikes(page)
+      } catch {
+        break // not signed in / transient — return what we have
+      }
+      for (const c of res.contents) ids.push(c.id)
+      if (!res.contents.length || !res.pages || page >= res.pages) break
+    }
+    return ids
+  }
+
   async getCollections(username?: string): Promise<Collection[]> {
     const path = username ? `/users/${encodeURIComponent(username)}/collections` : '/me/collections'
     const data = await this.request<{ collections: any[] }>('GET', path, { count: '100', page: '1' })

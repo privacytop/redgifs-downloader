@@ -41,6 +41,7 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
     storage.cacheContents(r.contents, { type: 'liked', id: 'liked' })
     return r
   })
+  ipcMain.handle(IPC.getLikedIds, () => api.getLikedIds())
   ipcMain.handle(IPC.getCollections, (_e, u?: string) => api.getCollections(u))
   ipcMain.handle(IPC.getCollectionContent, async (_e, id: string, p: number) => {
     const r = await api.getCollectionContent(id, p)
