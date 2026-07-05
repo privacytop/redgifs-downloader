@@ -48,6 +48,7 @@ export const IPC = {
   getMyContent: 'api:getMyContent',
   getFollowing: 'api:getFollowing',
   getFollowers: 'api:getFollowers',
+  getTrendingCreators: 'api:getTrendingCreators',
 
   getNichesTrending: 'api:getNichesTrending',
   getNicheCategories: 'api:getNicheCategories',
@@ -131,6 +132,7 @@ export interface RedgifsApi {
   getMyContent(opts: { type?: 'g' | 'i' | 'all'; order?: string; page?: number }): Promise<ContentResponse>
   getFollowing(page: number): Promise<{ items: UserResult[]; page: number; pages: number }>
   getFollowers(page: number): Promise<{ items: UserResult[]; page: number; pages: number }>
+  getTrendingCreators(page: number): Promise<{ items: UserResult[]; page: number; pages: number }>
 
   getNichesTrending(): Promise<Niche[]>
   getNicheCategories(): Promise<string[]>

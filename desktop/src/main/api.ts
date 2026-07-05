@@ -318,6 +318,14 @@ export class RedgifsApi {
   async getFollowingNiches(): Promise<Niche[]> {
     return this.niches('GET', '/niches/following')
   }
+
+  /** Trending verified creators (the "Trending" tab). */
+  async getTrendingCreators(page: number): Promise<{ items: UserResult[]; page: number; pages: number }> {
+    const data = await this.request<{ items?: any[]; users?: any[]; page?: number; pages?: number }>(
+      'GET', '/creators/search', { order: 'trending', page: String(page), verified: 'y' })
+    const users = (data.items ?? data.users ?? []).map(toUserResult)
+    return { items: users, page: data.page ?? page, pages: data.pages ?? page }
+  }
   async getRelatedNiches(id: string): Promise<Niche[]> {
     return this.niches('GET', `/niches/${encodeURIComponent(id)}/related`)
   }

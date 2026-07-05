@@ -29,6 +29,7 @@ const api: RedgifsApi = {
   getUser: (username) => ipcRenderer.invoke(IPC.getUser, username),
   getMyContent: (opts) => ipcRenderer.invoke(IPC.getMyContent, opts),
   getFollowing: (page) => ipcRenderer.invoke(IPC.getFollowing, page),
+  getTrendingCreators: (page) => ipcRenderer.invoke(IPC.getTrendingCreators, page),
   getFollowers: (page) => ipcRenderer.invoke(IPC.getFollowers, page),
 
   getNichesTrending: () => ipcRenderer.invoke(IPC.getNichesTrending),
