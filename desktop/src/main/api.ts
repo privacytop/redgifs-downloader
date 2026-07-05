@@ -216,6 +216,15 @@ export class RedgifsApi {
       .map((s) => ({ text: s.text as string, gifs: s.gifs ?? 0 }))
   }
 
+  /** Gifs similar to a given gif (RedGifs "recommended / see similar"). */
+  async recommendSimilar(gifId: string, page = 1): Promise<ContentResponse> {
+    const data = await this.request<RawContentResponse>('GET',
+      `/recommend/tags/${encodeURIComponent(gifId)}`, { page: String(page), count: '50' })
+    const contents = (data.gifs ?? []).map(toContent)
+    // The endpoint doesn't report total pages; keep paging while it returns rows.
+    return { contents, page, pages: contents.length ? page + 1 : page, total: 0 }
+  }
+
   /** Niches matching a query. */
   async searchNiches(query: string): Promise<Niche[]> {
     if (!query.trim()) return []

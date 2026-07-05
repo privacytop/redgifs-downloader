@@ -9,6 +9,7 @@ const api: RedgifsApi = {
   searchUsers: (query) => ipcRenderer.invoke(IPC.searchUsers, query),
   searchSuggest: (query) => ipcRenderer.invoke(IPC.searchSuggest, query),
   searchNiches: (query) => ipcRenderer.invoke(IPC.searchNiches, query),
+  recommendSimilar: (gifId, page) => ipcRenderer.invoke(IPC.recommendSimilar, gifId, page),
   getUserContent: (username, order, page) =>
     ipcRenderer.invoke(IPC.getUserContent, username, order, page),
   getProfile: () => ipcRenderer.invoke(IPC.getProfile),

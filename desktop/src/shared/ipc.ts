@@ -29,6 +29,7 @@ export const IPC = {
   searchUsers: 'api:searchUsers',
   searchSuggest: 'api:searchSuggest',
   searchNiches: 'api:searchNiches',
+  recommendSimilar: 'api:recommendSimilar',
   getUserContent: 'api:getUserContent',
   getProfile: 'api:getProfile',
   getCollections: 'api:getCollections',
@@ -110,6 +111,7 @@ export interface RedgifsApi {
   searchUsers(query: string): Promise<UserResult[]>
   searchSuggest(query: string): Promise<TagSuggestion[]>
   searchNiches(query: string): Promise<Niche[]>
+  recommendSimilar(gifId: string, page: number): Promise<ContentResponse>
   getUserContent(username: string, order: string, page: number): Promise<ContentResponse>
   getProfile(): Promise<UserProfile>
   getCollections(username?: string): Promise<Collection[]>

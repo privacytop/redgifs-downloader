@@ -3,6 +3,7 @@ import type { Content } from '@shared/types'
 import type { PlaySource } from './PlayerProvider'
 import { useNotify } from '../context/notify'
 import { useNav } from '../context/nav'
+import { useBlockedTags } from '../context/blockedTags'
 import { formatViews, formatDuration } from '../lib/format'
 import CollectionMenu from './CollectionMenu'
 
@@ -48,6 +49,7 @@ const likedIds = new Set<string>()
 export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProps): JSX.Element {
   const notify = useNotify()
   const { navigate } = useNav()
+  const { isBlocked } = useBlockedTags()
 
   const [items, setItems] = useState<Content[]>(source.items)
   const [index, setIndex] = useState(
@@ -72,6 +74,14 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   const [follows, setFollows] = useState<Set<string> | null>(null)
   const [following, setFollowing] = useState(false)
   const [collectionOpen, setCollectionOpen] = useState(false)
+
+  // --- "see similar" mode: scroll into gifs recommended for one anchor clip ---
+  const [similar, setSimilar] = useState(false)
+  const similarRef = useRef(false)
+  const similarAnchorRef = useRef<string | null>(null)
+  const similarPageRef = useRef(1)
+  // The feed to return to when leaving similar mode.
+  const savedFeedRef = useRef<{ items: Content[]; index: number } | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const lastStepRef = useRef(0)
@@ -105,28 +115,78 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   }, [])
 
   // --- pagination: append more when nearing the end ------------------------
+  const appendUnique = useCallback((more: Content[]): void => {
+    if (!more.length) return
+    setItems((prev) => {
+      const seen = new Set(prev.map((c) => c.id))
+      return [...prev, ...more.filter((c) => !seen.has(c.id))]
+    })
+  }, [])
+
   const maybeLoadMore = useCallback(
     async (nextIndex: number): Promise<void> => {
       const list = itemsRef.current
-      if (!source.loadMore || loadingRef.current) return
+      if (loadingRef.current) return
       if (nextIndex < list.length - PREFETCH_WITHIN) return
+
+      // In "see similar" mode, keep paging the recommendations for the anchor.
+      if (similarRef.current && similarAnchorRef.current) {
+        loadingRef.current = true
+        try {
+          similarPageRef.current += 1
+          const res = await window.api.recommendSimilar(similarAnchorRef.current, similarPageRef.current)
+          appendUnique(res.contents.filter((c) => !isBlocked(c)))
+        } catch {
+          /* ignore — playback continues with what we have */
+        } finally {
+          loadingRef.current = false
+        }
+        return
+      }
+
+      if (!source.loadMore) return
       loadingRef.current = true
       try {
         const more = await source.loadMore()
-        if (more.length) {
-          setItems((prev) => {
-            const seen = new Set(prev.map((c) => c.id))
-            return [...prev, ...more.filter((c) => !seen.has(c.id))]
-          })
-        }
+        appendUnique(more)
       } catch {
         /* ignore — playback continues with what we have */
       } finally {
         loadingRef.current = false
       }
     },
-    [source]
+    [source, appendUnique, isBlocked]
   )
+
+  // Toggle recommendations: on, scrolling continues into gifs similar to the
+  // current clip; off, restores the original feed at the spot you left it.
+  const toggleSimilar = useCallback(async (): Promise<void> => {
+    if (!current) return
+    if (similarRef.current) {
+      const saved = savedFeedRef.current
+      similarRef.current = false
+      setSimilar(false)
+      if (saved) {
+        setItems(saved.items)
+        setIndex(saved.index)
+      }
+      return
+    }
+    const anchor = current.id
+    savedFeedRef.current = { items: itemsRef.current, index }
+    similarAnchorRef.current = anchor
+    similarPageRef.current = 1
+    try {
+      const res = await window.api.recommendSimilar(anchor, 1)
+      const recs = res.contents.filter((c) => c.id !== anchor && !isBlocked(c))
+      similarRef.current = true
+      setItems([current, ...recs])
+      setIndex(0)
+      setSimilar(true)
+    } catch (e) {
+      notify('Couldn’t load similar: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    }
+  }, [current, index, isBlocked, notify])
 
   // --- stepping between clips (debounced) ----------------------------------
   const step = useCallback(
@@ -361,7 +421,7 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     <div className="player" onWheel={onWheel} role="dialog" aria-modal="true" aria-label="Player">
       {/* source chip (top-left) */}
       <div className="player-chip">
-        ▸ {source.label} · {index + 1}/{items.length}
+        ▸ {similar ? 'Similar' : source.label} · {index + 1}/{items.length}
       </div>
 
       {/* close (top-right) */}
@@ -534,6 +594,21 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
             <CollectionMenu contentId={current.id} onClose={() => setCollectionOpen(false)} />
           )}
         </div>
+
+        <button
+          className={`btn ${similar ? 'on' : ''}`}
+          type="button"
+          style={{ ...actionBtnStyle, width: '100%', ...(similar ? followingStyle : null) }}
+          onClick={toggleSimilar}
+          aria-pressed={similar}
+          title={similar ? 'Back to the feed' : 'Scroll into similar gifs'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={actionIconStyle}>
+            <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4z" />
+            <path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z" />
+          </svg>
+          {similar ? 'Back to feed' : 'See similar'}
+        </button>
 
         <div className="player-stats">
           <span>{formatViews(current.views)} views</span>
