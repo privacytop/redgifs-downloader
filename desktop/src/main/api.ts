@@ -345,6 +345,13 @@ export class RedgifsApi {
     await this.request<void>('PATCH', 'https://api.redgifs.com/v1/me', undefined, true, { operations: ops })
   }
 
+  /** All known tag names (for blocked-tag autocomplete / validation). */
+  async getAllTags(): Promise<string[]> {
+    const data = await this.request<{ tags?: Array<{ name?: string }> }>('GET',
+      'https://api.redgifs.com/v1/tags', undefined, true)
+    return (data.tags ?? []).map((t) => t.name ?? '').filter(Boolean)
+  }
+
   // ---- follows ----
 
   // Follow/unfollow live on the v1 API, keyed by username (not the v2 BASE).

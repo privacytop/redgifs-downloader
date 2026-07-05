@@ -49,6 +49,7 @@ const api: RedgifsApi = {
   createCollection: (name) => ipcRenderer.invoke(IPC.createCollection, name),
 
   updatePreferences: (ops) => ipcRenderer.invoke(IPC.updatePreferences, ops),
+  getAllTags: () => ipcRenderer.invoke(IPC.getAllTags),
 
   startDownload: (request) => ipcRenderer.invoke(IPC.downloadStart, request),
   downloadContents: (contents, username) =>

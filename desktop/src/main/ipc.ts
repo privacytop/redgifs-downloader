@@ -100,6 +100,7 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.createCollection, (_e, name: string) => api.createCollection(name))
 
   ipcMain.handle(IPC.updatePreferences, (_e, ops) => api.updatePreferences(ops))
+  ipcMain.handle(IPC.getAllTags, () => api.getAllTags())
 
   ipcMain.handle(IPC.downloadStart, (_e, req) => downloader.start(req))
   ipcMain.handle(IPC.downloadContents, (_e, contents: Content[], username?: string) =>

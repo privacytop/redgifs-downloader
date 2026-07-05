@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useNotify } from '../context/notify'
@@ -15,6 +15,9 @@ export default function Account(): JSX.Element {
   const [profile, setProfile] = useState<UserProfile | null>(() => readCache<UserProfile>('me'))
   const [tag, setTag] = useState('')
   const [adding, setAdding] = useState(false)
+  const [showSug, setShowSug] = useState(false)
+  // Full tag catalog for autocomplete + "unknown tag" validation (cache-first).
+  const [allTags, setAllTags] = useState<string[]>(() => readCache<string[]>('alltags') ?? [])
 
   const refetch = (): void => {
     window.api
@@ -33,30 +36,67 @@ export default function Account(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
 
-  const addTag = (): void => {
-    const t = tag.trim().toLowerCase()
-    if (!t || adding) return
+  // Load the tag catalog once (thousands of tags; cached for instant reuse).
+  useEffect(() => {
+    window.api
+      .getAllTags()
+      .then((t) => {
+        setAllTags(t)
+        writeCache('alltags', t)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  // RedGifs' JSON-patch "add" REPLACES the whole array, so every change must
+  // send the complete desired blocked-tags list (and preferences alongside it),
+  // otherwise adding one tag wipes the rest.
+  const saveBlocked = (nextBlocked: string[]): void => {
+    if (!profile || adding) return
     setAdding(true)
     window.api
-      .updatePreferences([{ op: 'add', path: '/blocked_tags', value: [t] }])
+      .updatePreferences([
+        { op: 'add', path: '/preferences', value: profile.preferences },
+        { op: 'add', path: '/blocked_tags', value: nextBlocked }
+      ])
       .then(() => {
         notify('Updated', 'success')
         setTag('')
+        setShowSug(false)
         refetch()
       })
       .catch((e) => notify('Update failed: ' + e.message, 'error'))
       .finally(() => setAdding(false))
   }
 
-  const removeTag = (t: string): void => {
-    window.api
-      .updatePreferences([{ op: 'remove', path: '/blocked_tags', value: [t] }])
-      .then(() => {
-        notify('Updated', 'success')
-        refetch()
-      })
-      .catch((e) => notify('Update failed: ' + e.message, 'error'))
+  const addTag = (raw?: string): void => {
+    if (!profile) return
+    const input = (raw ?? tag).trim()
+    if (!input) return
+    // Prefer the catalog's canonical casing when the tag is recognized.
+    const known = allTags.find((x) => x.toLowerCase() === input.toLowerCase())
+    const val = known ?? input
+    if (profile.blockedTags.some((x) => x.toLowerCase() === val.toLowerCase())) {
+      setTag('')
+      return
+    }
+    saveBlocked([...profile.blockedTags, val])
   }
+
+  const removeTag = (t: string): void => {
+    if (!profile) return
+    saveBlocked(profile.blockedTags.filter((x) => x !== t))
+  }
+
+  const q = tag.trim().toLowerCase()
+  const suggestions = useMemo(() => {
+    if (!q) return []
+    const blocked = new Set((profile?.blockedTags ?? []).map((x) => x.toLowerCase()))
+    return allTags
+      .filter((t) => t.toLowerCase().includes(q) && !blocked.has(t.toLowerCase()))
+      .slice(0, 8)
+  }, [q, allTags, profile])
+  // Whether the typed text matches a real tag (only judged once the catalog is in).
+  const known = !q || allTags.length === 0 || allTags.some((t) => t.toLowerCase() === q)
 
   const signOut = (): void => {
     window.api
@@ -148,19 +188,52 @@ export default function Account(): JSX.Element {
                 ))}
               </div>
             )}
-            <div style={{ display: 'flex', gap: 8, maxWidth: 420 }}>
-              <input
-                style={{ flex: 1 }}
-                placeholder="e.g. spoilers"
-                value={tag}
-                onChange={(e) => setTag(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addTag()
-                }}
-              />
-              <button className="btn btn-ember" onClick={addTag} disabled={adding || !tag.trim()}>
-                {adding ? 'Adding…' : 'Add'}
-              </button>
+            <div style={{ maxWidth: 420 }}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <input
+                    style={{ width: '100%' }}
+                    placeholder="Search tags to block…"
+                    value={tag}
+                    onChange={(e) => {
+                      setTag(e.target.value)
+                      setShowSug(true)
+                    }}
+                    onFocus={() => setShowSug(true)}
+                    onBlur={() => setTimeout(() => setShowSug(false), 120)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addTag()
+                      else if (e.key === 'Escape') setShowSug(false)
+                    }}
+                  />
+                  {showSug && suggestions.length > 0 && (
+                    <div style={sugBoxStyle}>
+                      {suggestions.map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          style={sugItemStyle}
+                          // mousedown (not click) so it fires before the input's blur
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            addTag(s)
+                          }}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button className="btn btn-ember" onClick={() => addTag()} disabled={adding || !tag.trim()}>
+                  {adding ? 'Adding…' : 'Add'}
+                </button>
+              </div>
+              {!known && (
+                <div style={unavailStyle}>
+                  “{tag.trim()}” isn’t a known RedGifs tag — it may not block anything.
+                </div>
+              )}
             </div>
           </section>
 
@@ -319,4 +392,42 @@ const chipRemoveStyle: CSSProperties = {
   background: 'none',
   border: 'none',
   cursor: 'pointer'
+}
+
+const sugBoxStyle: CSSProperties = {
+  position: 'absolute',
+  top: 'calc(100% + 4px)',
+  left: 0,
+  right: 0,
+  zIndex: 20,
+  maxHeight: 260,
+  overflowY: 'auto',
+  background: 'var(--panel)',
+  border: '1px solid var(--line2)',
+  borderRadius: 10,
+  boxShadow: '0 18px 44px rgba(0, 0, 0, 0.5)',
+  padding: 4,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2
+}
+
+const sugItemStyle: CSSProperties = {
+  textAlign: 'left',
+  background: 'none',
+  border: 0,
+  borderRadius: 7,
+  padding: '7px 10px',
+  fontSize: 13,
+  color: 'var(--ink)',
+  cursor: 'pointer',
+  font: 'inherit'
+}
+
+const unavailStyle: CSSProperties = {
+  marginTop: 8,
+  fontFamily: 'var(--mono)',
+  fontSize: 11,
+  letterSpacing: '0.02em',
+  color: 'var(--yellow, #d8a657)'
 }

@@ -65,6 +65,7 @@ export const IPC = {
   createCollection: 'api:createCollection',
 
   updatePreferences: 'api:updatePreferences',
+  getAllTags: 'api:getAllTags',
 
   downloadStart: 'download:start',
   downloadContents: 'download:contents',
@@ -147,6 +148,7 @@ export interface RedgifsApi {
   createCollection(name: string): Promise<void>
 
   updatePreferences(ops: Array<{ op: string; path: string; value: unknown }>): Promise<void>
+  getAllTags(): Promise<string[]>
 
   startDownload(request: DownloadRequest): Promise<DownloadTask>
   downloadContents(contents: Content[], username?: string): Promise<DownloadTask>
