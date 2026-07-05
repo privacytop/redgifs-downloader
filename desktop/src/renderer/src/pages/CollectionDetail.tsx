@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
 import FeedGrid from '../components/FeedGrid'
@@ -18,6 +19,17 @@ export default function CollectionDetail({
   const notify = useNotify()
   const [mode, setMode] = useViewMode('collection', 'grid')
   const feed = usePlayableFeed((p) => window.api.getCollectionContent(id, p), title, [id])
+
+  // Refresh when a gif is added to / removed from THIS collection (e.g. via the
+  // player's collection menu), so the grid reflects it without reopening.
+  const reload = feed.reload
+  useEffect(() => {
+    const onChange = (e: Event): void => {
+      if ((e as CustomEvent<{ folderId?: string }>).detail?.folderId === id) reload()
+    }
+    window.addEventListener('rgd:collection-changed', onChange)
+    return () => window.removeEventListener('rgd:collection-changed', onChange)
+  }, [id, reload])
 
   const dl = (c: Content): void => {
     window.api

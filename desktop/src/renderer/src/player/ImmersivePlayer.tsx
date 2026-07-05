@@ -143,18 +143,20 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     [maybeLoadMore]
   )
 
-  // Reset per-clip state (niche vote, like, playback, popover) when the clip changes.
+  // Reset per-clip state AND kick off playback whenever the clip changes —
+  // including the very first mount. Runs after the <video> is in the DOM, so
+  // starting muted (always permitted) then restoring the sound preference plays
+  // reliably without needing a scroll first. Seeding `duration` from the known
+  // clip length makes the scrubber usable immediately, before metadata loads.
   useEffect(() => {
     setNicheVote(null)
     setLiked(current ? likedIds.has(current.id) : false)
     setCurrentTime(0)
-    setDuration(0)
+    setDuration(current && Number.isFinite(current.duration) ? current.duration : 0)
     setCollectionOpen(false)
-    // Playback is kicked off from the video's onCanPlay (startPlayback) so it
-    // fires once the element is actually ready — calling play() here races the
-    // media load and silently rejects on the first mount.
+    startPlayback()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index])
+  }, [current?.id])
 
   // --- load the follows set once, then reflect the current creator ---------
   useEffect(() => {
@@ -222,17 +224,12 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     }
   }, [muted])
 
-  // Attempt to autoplay with audio when a new clip mounts; tolerate a block.
+  // Once real metadata arrives, use its (more accurate) duration. Playback is
+  // driven by the per-clip effect + onCanPlay, so don't call play() here.
   const onLoadedMetadata = useCallback((): void => {
     const v = videoRef.current
-    if (!v) return
-    setDuration(Number.isFinite(v.duration) ? v.duration : 0)
-    v.muted = muted
-    void v.play().catch(() => {
-      // Autoplay-with-audio blocked: reflect the paused state so the button is honest.
-      setPlaying(false)
-    })
-  }, [muted])
+    if (v && Number.isFinite(v.duration) && v.duration > 0) setDuration(v.duration)
+  }, [])
 
   const togglePlay = useCallback((): void => {
     const v = videoRef.current

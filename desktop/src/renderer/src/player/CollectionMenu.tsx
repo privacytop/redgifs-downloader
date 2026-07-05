@@ -9,6 +9,14 @@ interface CollectionMenuProps {
   onClose: () => void
 }
 
+/**
+ * Broadcast a collection membership change so any open view of that collection
+ * (e.g. CollectionDetail) can refresh without the user reopening it.
+ */
+function emitCollectionChange(folderId: string, gifId: string, action: 'add' | 'remove'): void {
+  window.dispatchEvent(new CustomEvent('rgd:collection-changed', { detail: { folderId, gifId, action } }))
+}
+
 // Midnight Press inline styles (tokens.css is off-limits for this task).
 // Rendered as a centered modal so the rail can never clip it off-screen.
 const backdropStyle: CSSProperties = {
@@ -159,6 +167,7 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
     try {
       await window.api.addToCollection(c.id, contentId)
       setInIds((prev) => new Set(prev).add(c.id))
+      emitCollectionChange(c.id, contentId, 'add')
       notify('Added to ' + c.name, 'success')
     } catch (e) {
       notify('Add failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
@@ -177,6 +186,7 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
         next.delete(c.id)
         return next
       })
+      emitCollectionChange(c.id, contentId, 'remove')
       notify('Removed from ' + c.name, 'success')
     } catch (e) {
       notify('Remove failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
