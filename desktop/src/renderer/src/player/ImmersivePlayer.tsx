@@ -117,20 +117,14 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   const currentIdRef = useRef(current?.id)
   currentIdRef.current = current?.id
 
-  // Start playback reliably: muted autoplay is always permitted by Chromium, so
-  // begin muted, then restore the user's sound preference once it's actually
-  // playing (unmuting an already-playing element needs no user gesture). Wired
-  // to the video's onCanPlay so it runs the moment the media is ready.
+  // Autoplay is permitted (main sets autoplay-policy=no-user-gesture-required),
+  // so just play with the user's mute preference. Wired to the video's onCanPlay
+  // and the per-clip effect so it runs the moment the media is ready.
   const startPlayback = useCallback((): void => {
     const v = videoRef.current
     if (!v) return
-    v.muted = true
-    v.play()
-      .then(() => {
-        v.muted = mutedRef.current
-        setPlaying(true)
-      })
-      .catch(() => setPlaying(false))
+    v.muted = mutedRef.current
+    v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
   }, [])
 
   // --- pagination: append more when nearing the end ------------------------
@@ -293,30 +287,20 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     [step]
   )
 
-  // Clean up the video element on unmount.
+  // Pause the element on unmount. Do NOT strip src / call load() here: under
+  // React StrictMode's dev double-mount the cleanup fires right after setup, and
+  // blanking the source left the first clip unplayable until you scrolled to a
+  // fresh element (the real cause of "autoplay only works after scrolling").
   useEffect(() => {
     const v = videoRef.current
     return () => {
-      if (v) {
-        v.pause()
-        v.removeAttribute('src')
-        v.load()
-      }
+      v?.pause()
     }
   }, [])
 
   // Keep the element's muted flag in sync with the mute button + persist it.
-  // IMPORTANT: skip the initial mount — startPlayback deliberately starts muted
-  // (so muted autoplay is allowed) and restores the preference once playing. If
-  // this effect wrote `muted` on mount it would un-mute mid-startup and the
-  // browser would block the autoplay.
-  const mutedSynced = useRef(false)
   useEffect(() => {
-    if (mutedSynced.current) {
-      if (videoRef.current) videoRef.current.muted = muted
-    } else {
-      mutedSynced.current = true
-    }
+    if (videoRef.current) videoRef.current.muted = muted
     try {
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
     } catch {
