@@ -12,6 +12,7 @@ import type {
   DownloadTask,
   LibraryProgress,
   Niche,
+  Quality,
   Settings,
   Statistics,
   TagSuggestion,
@@ -157,7 +158,7 @@ export interface RedgifsApi {
   getAllTags(): Promise<string[]>
 
   startDownload(request: DownloadRequest): Promise<DownloadTask>
-  downloadContents(contents: Content[], username?: string): Promise<DownloadTask>
+  downloadContents(contents: Content[], username?: string, quality?: Quality): Promise<DownloadTask>
   listDownloads(): Promise<DownloadTask[]>
   pauseDownload(id: string): Promise<void>
   resumeDownload(id: string): Promise<void>

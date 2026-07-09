@@ -4,6 +4,7 @@ import type { PlaySource } from './PlayerProvider'
 import { useNotify } from '../context/notify'
 import { useNav } from '../context/nav'
 import { useBlockedTags } from '../context/blockedTags'
+import { useQuality } from '../context/quality'
 import { formatViews, formatDuration } from '../lib/format'
 import { readCache, writeCache } from '../lib/cache'
 import CollectionMenu from './CollectionMenu'
@@ -66,6 +67,7 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   const notify = useNotify()
   const { navigate } = useNav()
   const { isBlocked } = useBlockedTags()
+  const { quality } = useQuality()
 
   const [items, setItems] = useState<Content[]>(source.items)
   const [index, setIndex] = useState(
@@ -335,12 +337,12 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   const save = useCallback(async (): Promise<void> => {
     if (!current) return
     try {
-      await window.api.downloadContents([current], current.username)
+      await window.api.downloadContents([current], current.username, quality)
       notify('Saving @' + current.username, 'success')
     } catch (e) {
       notify('Save failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     }
-  }, [current, notify])
+  }, [current, notify, quality])
 
   const copyLink = useCallback(async (): Promise<void> => {
     if (!current) return

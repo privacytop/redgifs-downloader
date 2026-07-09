@@ -6,6 +6,7 @@ import FeedGrid from '../components/FeedGrid'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
+import { useQuality } from '../context/quality'
 import { useNav } from '../context/nav'
 import { formatCount } from '../lib/format'
 import { DEFAULT_ORDER, typeNoun, type ContentType, type Order } from '../lib/feedOptions'
@@ -17,6 +18,7 @@ const TAG_CAP = 24
 export default function Creator({ username }: { username: string }): JSX.Element {
   const notify = useNotify()
   const { navigate } = useNav()
+  const { quality } = useQuality()
   const [mode, setMode] = useViewMode('creator', 'grid')
   const [type, setType] = useState<ContentType>('g')
   const [order, setOrder] = useState<Order>(DEFAULT_ORDER)
@@ -56,14 +58,14 @@ export default function Creator({ username }: { username: string }): JSX.Element
 
   const dl = (c: Content): void => {
     window.api
-      .downloadContents([c], c.username)
+      .downloadContents([c], c.username, quality)
       .then(() => notify('Saving @' + c.username, 'success'))
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
   }
 
   const downloadAll = (): void => {
     window.api
-      .startDownload({ type: 'user', username })
+      .startDownload({ type: 'user', username, quality })
       .then(() => notify('Queued @' + username + ' — downloading all', 'success'))
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
   }

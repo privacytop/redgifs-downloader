@@ -6,12 +6,14 @@ import FeedState from '../components/FeedState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
+import { useQuality } from '../context/quality'
 import type { Order, ContentType } from '../lib/feedOptions'
 import type { Content } from '@shared/types'
 
 /** Browse RedGifs by content type, order, and verified status. */
 export default function Discover(): JSX.Element {
   const notify = useNotify()
+  const { quality } = useQuality()
   const [type, setType] = useState<ContentType>('g')
   const [order, setOrder] = useState<Order>('latest')
   const [verified, setVerified] = useState(false)
@@ -25,7 +27,7 @@ export default function Discover(): JSX.Element {
 
   const dl = (c: Content): void => {
     window.api
-      .downloadContents([c], c.username)
+      .downloadContents([c], c.username, quality)
       .then(() => notify('Saving @' + c.username, 'success'))
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
   }

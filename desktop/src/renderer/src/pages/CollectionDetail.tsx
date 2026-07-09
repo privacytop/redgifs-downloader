@@ -8,6 +8,7 @@ import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useAuthed } from '../hooks/useAuthed'
 import { useNotify } from '../context/notify'
+import { useQuality } from '../context/quality'
 import type { Content } from '@shared/types'
 
 /** A single collection's contents, with a "Download all" action. */
@@ -20,6 +21,7 @@ export default function CollectionDetail({
 }): JSX.Element {
   const notify = useNotify()
   const authed = useAuthed()
+  const { quality } = useQuality()
   const [mode, setMode] = useViewMode('collection', 'grid')
   const feed = usePlayableFeed((p) => window.api.getCollectionContent(id, p), title, [id])
 
@@ -36,14 +38,14 @@ export default function CollectionDetail({
 
   const dl = (c: Content): void => {
     window.api
-      .downloadContents([c], c.username)
+      .downloadContents([c], c.username, quality)
       .then(() => notify('Saving @' + c.username, 'success'))
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
   }
 
   const downloadAll = (): void => {
     window.api
-      .startDownload({ type: 'collection', collectionId: id })
+      .startDownload({ type: 'collection', collectionId: id, quality })
       .then(() => notify('Downloading collection · ' + title, 'success'))
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
   }

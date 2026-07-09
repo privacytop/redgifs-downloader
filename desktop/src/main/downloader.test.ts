@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildFilename, extFromUrl, pickUrl } from './downloader'
+import { buildContentsRequest, buildFilename, extFromUrl, pickUrl } from './downloader'
 
 describe('downloader helpers', () => {
   it('parses extension and strips query strings', () => {
@@ -17,5 +17,15 @@ describe('downloader helpers', () => {
     expect(pickUrl({ urls } as any, 'hd')).toBe('h.mp4')
     expect(pickUrl({ urls: { sd: 's.mp4' } } as any, 'hd')).toBe('s.mp4')
     expect(pickUrl({ urls } as any, 'sd')).toBe('s.mp4')
+  })
+
+  it('threads an explicit quality override into the built request', () => {
+    const req = buildContentsRequest([{ id: 'g1' } as any, { id: 'g2' } as any], 'bob', 'sd')
+    expect(req).toMatchObject({ type: 'single', username: 'bob', contentIds: ['g1', 'g2'], quality: 'sd' })
+  })
+
+  it('leaves quality undefined when no override given, so the caller falls back to the global setting', () => {
+    const req = buildContentsRequest([{ id: 'g1' } as any], 'bob')
+    expect(req.quality).toBeUndefined()
   })
 })

@@ -4,6 +4,11 @@ import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
 import { useThumbnailMode, type ThumbMode } from '../hooks/useThumbnailMode'
 
+const QUALITIES: { id: Settings['preferredQuality']; label: string }[] = [
+  { id: 'hd', label: 'HD' },
+  { id: 'sd', label: 'SD' }
+]
+
 const THUMB_MODES: { id: ThumbMode; label: string }[] = [
   { id: 'default', label: 'Default' },
   { id: 'auto', label: 'Auto' },
@@ -79,13 +84,19 @@ export default function SettingsPage({ notify }: { notify: (m: string, t?: Toast
 
           <div className="field">
             <span className="field-label">Quality</span>
-            <select
-              value={s.preferredQuality}
-              onChange={(e) => set('preferredQuality', e.target.value as Settings['preferredQuality'])}
-            >
-              <option value="hd">HD</option>
-              <option value="sd">SD</option>
-            </select>
+            <div className="seg" role="group" aria-label="Quality">
+              {QUALITIES.map((q) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  className={s.preferredQuality === q.id ? 'on' : ''}
+                  aria-pressed={s.preferredQuality === q.id}
+                  onClick={() => set('preferredQuality', q.id)}
+                >
+                  {q.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="field">

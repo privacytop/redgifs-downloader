@@ -1,6 +1,6 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { EVT, IPC } from '../shared/ipc'
-import type { Content, DownloadTask } from '../shared/types'
+import type { Content, DownloadTask, Quality } from '../shared/types'
 import { RedgifsApi } from './api'
 import { AuthManager } from './auth'
 import { Downloader } from './downloader'
@@ -107,8 +107,8 @@ export function registerIpc(win: BrowserWindow, storage: Storage): void {
   ipcMain.handle(IPC.getAllTags, () => api.getAllTags())
 
   ipcMain.handle(IPC.downloadStart, (_e, req) => downloader.start(req))
-  ipcMain.handle(IPC.downloadContents, (_e, contents: Content[], username?: string) =>
-    downloader.startContents(contents, username))
+  ipcMain.handle(IPC.downloadContents, (_e, contents: Content[], username?: string, quality?: Quality) =>
+    downloader.startContents(contents, username, quality))
   ipcMain.handle(IPC.downloadList, () => downloader.list())
   ipcMain.handle(IPC.downloadPause, (_e, id: string) => downloader.pause(id))
   ipcMain.handle(IPC.downloadResume, (_e, id: string) => downloader.resume(id))

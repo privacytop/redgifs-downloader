@@ -1,3 +1,4 @@
+import QualityToggle from './QualityToggle'
 import SortControl from './SortControl'
 import TypeFilter from './TypeFilter'
 import ViewToggle, { type ViewMode } from './ViewToggle'
@@ -21,8 +22,8 @@ interface FeedControlsProps {
 /**
  * The one control cluster every feed page mounts in `PageHeader`'s `right`
  * slot. Renders only the controls a page opts into, always in the same order
- * (type · sort · verified · view) and the same place, so no two feeds arrange
- * their controls differently again.
+ * (type · sort · verified · quality · view) and the same place, so no two
+ * feeds arrange their controls differently again.
  */
 export default function FeedControls({
   mode,
@@ -48,6 +49,7 @@ export default function FeedControls({
           Verified
         </button>
       )}
+      <QualityToggle />
       <ViewToggle value={mode} onChange={onModeChange} />
     </div>
   )

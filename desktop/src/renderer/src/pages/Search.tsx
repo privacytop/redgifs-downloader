@@ -7,6 +7,7 @@ import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNav } from '../context/nav'
 import { useNotify } from '../context/notify'
+import { useQuality } from '../context/quality'
 import { formatCount } from '../lib/format'
 import type { ContentType } from '../lib/feedOptions'
 import type { Content, Niche, TagSuggestion, UserResult } from '@shared/types'
@@ -42,6 +43,7 @@ function CreatorCard({ user, onOpen }: { user: UserResult; onOpen: (u: string) =
 export default function Search({ query }: { query: string }): JSX.Element {
   const { navigate } = useNav()
   const notify = useNotify()
+  const { quality } = useQuality()
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([])
   const [niches, setNiches] = useState<Niche[]>([])
   const [creators, setCreators] = useState<UserResult[]>([])
@@ -76,7 +78,7 @@ export default function Search({ query }: { query: string }): JSX.Element {
 
   const dl = (c: Content): void => {
     window.api
-      .downloadContents([c], c.username)
+      .downloadContents([c], c.username, quality)
       .then(() => notify('Saving @' + c.username, 'success'))
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
   }

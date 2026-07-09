@@ -55,8 +55,8 @@ const api: RedgifsApi = {
   getAllTags: () => ipcRenderer.invoke(IPC.getAllTags),
 
   startDownload: (request) => ipcRenderer.invoke(IPC.downloadStart, request),
-  downloadContents: (contents, username) =>
-    ipcRenderer.invoke(IPC.downloadContents, contents, username),
+  downloadContents: (contents, username, quality) =>
+    ipcRenderer.invoke(IPC.downloadContents, contents, username, quality),
   listDownloads: () => ipcRenderer.invoke(IPC.downloadList),
   pauseDownload: (id) => ipcRenderer.invoke(IPC.downloadPause, id),
   resumeDownload: (id) => ipcRenderer.invoke(IPC.downloadResume, id),

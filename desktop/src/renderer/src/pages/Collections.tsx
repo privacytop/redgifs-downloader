@@ -2,8 +2,10 @@ import { useCallback } from 'react'
 import PageHeader from '../components/PageHeader'
 import FeedState from '../components/FeedState'
 import SignInGate from '../components/SignInGate'
+import QualityToggle from '../components/QualityToggle'
 import { useNav } from '../context/nav'
 import { useNotify } from '../context/notify'
+import { useQuality } from '../context/quality'
 import { useCachedResource } from '../hooks/useCachedResource'
 import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
@@ -13,6 +15,7 @@ import type { Collection } from '@shared/types'
 export default function Collections(): JSX.Element {
   const { navigate } = useNav()
   const notify = useNotify()
+  const { quality } = useQuality()
 
   const authed = useAuthed()
 
@@ -27,17 +30,21 @@ export default function Collections(): JSX.Element {
     (c: Collection, e: React.MouseEvent) => {
       e.stopPropagation()
       window.api
-        .startDownload({ type: 'collection', collectionId: c.id })
+        .startDownload({ type: 'collection', collectionId: c.id, quality })
         .then(() => notify('Queued ' + c.name, 'success'))
         .catch((err: Error) => notify('Download failed: ' + err.message, 'error'))
     },
-    [notify]
+    [notify, quality]
   )
 
-  const readout =
-    collections.length > 0 ? (
-      <span className="readout">{formatCount(collections.length)} collections</span>
-    ) : undefined
+  const readout = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      {collections.length > 0 && (
+        <span className="readout">{formatCount(collections.length)} collections</span>
+      )}
+      <QualityToggle />
+    </div>
+  )
 
   const header = (
     <PageHeader kicker="library" kickerIndex={5} title="Collections" right={readout} />

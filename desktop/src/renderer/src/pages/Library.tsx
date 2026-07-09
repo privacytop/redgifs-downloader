@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
+import QualityToggle from '../components/QualityToggle'
 import FeedGrid from '../components/FeedGrid'
 import EmptyState from '../components/EmptyState'
 import FeedState from '../components/FeedState'
@@ -8,6 +9,7 @@ import { useViewMode } from '../hooks/useViewMode'
 import { usePlayer } from '../player/PlayerProvider'
 import { useBlockedTags } from '../context/blockedTags'
 import { useNotify } from '../context/notify'
+import { useQuality } from '../context/quality'
 import { readCache, writeCache } from '../lib/cache'
 import type { Collection, Content, LibraryProgress } from '@shared/types'
 
@@ -40,6 +42,7 @@ export default function Library(): JSX.Element {
   const notify = useNotify()
   const player = usePlayer()
   const { isBlocked } = useBlockedTags()
+  const { quality } = useQuality()
   const [mode, setMode] = useViewMode('library', 'grid')
 
   const [collections, setCollections] = useState<Collection[]>(
@@ -148,7 +151,7 @@ export default function Library(): JSX.Element {
 
   const download = (c: Content): void => {
     window.api
-      .downloadContents([c], c.username)
+      .downloadContents([c], c.username, quality)
       .then(() => notify('Saving @' + c.username, 'success'))
       .catch((e) => notify('Download failed: ' + e.message, 'error'))
   }
@@ -162,7 +165,12 @@ export default function Library(): JSX.Element {
         kicker="library"
         kickerIndex={9}
         title="All media"
-        right={<ViewToggle value={mode} onChange={setMode} />}
+        right={
+          <div className="controls">
+            <QualityToggle />
+            <ViewToggle value={mode} onChange={setMode} />
+          </div>
+        }
       />
 
       <div className="toolbar">

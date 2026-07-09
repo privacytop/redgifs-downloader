@@ -2,12 +2,14 @@ import { useState } from 'react'
 import type { Content } from '@shared/types'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
+import QualityToggle from '../components/QualityToggle'
 import FeedGrid from '../components/FeedGrid'
 import FeedState from '../components/FeedState'
 import SignInGate from '../components/SignInGate'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
+import { useQuality } from '../context/quality'
 import { useAuthed } from '../hooks/useAuthed'
 
 type Tab = 'for-you' | 'trending'
@@ -18,6 +20,7 @@ type Tab = 'for-you' | 'trending'
  */
 export default function ForYou(): JSX.Element {
   const notify = useNotify()
+  const { quality } = useQuality()
   const [mode, setMode] = useViewMode('for-you', 'grid')
   const authed = useAuthed()
   const [tab, setTab] = useState<Tab>('for-you')
@@ -30,7 +33,7 @@ export default function ForYou(): JSX.Element {
 
   const dl = (c: Content): void => {
     window.api
-      .downloadContents([c], c.username)
+      .downloadContents([c], c.username, quality)
       .then(() => notify('Saving @' + c.username, 'success'))
       .catch((e) => notify('Download failed: ' + e.message, 'error'))
   }
@@ -68,6 +71,7 @@ export default function ForYou(): JSX.Element {
         right={
           <div className="controls">
             {tabs}
+            <QualityToggle />
             <ViewToggle value={mode} onChange={setMode} />
           </div>
         }

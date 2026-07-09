@@ -33,6 +33,10 @@ export function buildFilename(c: Content, rank: number): string {
   return sanitize(`${String(rank).padStart(4, '0')}_${c.id}_${c.username}.${ext}`)
 }
 
+export function buildContentsRequest(contents: Content[], username?: string, quality?: Quality): DownloadRequest {
+  return { type: 'single', username, contentIds: contents.map((c) => c.id), quality }
+}
+
 export interface DownloaderDeps {
   api: RedgifsApi
   storage: Storage
@@ -68,9 +72,9 @@ export class Downloader {
 
   // Download an already-resolved list of contents (e.g. the player "Save"),
   // skipping the API resolve step. Uses the same worker pool + events.
-  startContents(contents: Content[], username?: string): DownloadTask {
+  startContents(contents: Content[], username?: string, quality?: Quality): DownloadTask {
     const settings = this.deps.storage.getSettings()
-    const request: DownloadRequest = { type: 'single', username, contentIds: contents.map((c) => c.id) }
+    const request: DownloadRequest = buildContentsRequest(contents, username, quality)
     const task: DownloadTask = {
       id: randomUUID(), type: 'single', username: username ?? '',
       status: 'queued', progress: 0, totalItems: 0, downloaded: 0, failed: 0, skipped: 0,
