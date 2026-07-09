@@ -20,7 +20,9 @@ export function useCachedResource<T>(
   deps: unknown[] = []
 ): CachedResource<T> {
   const [data, setData] = useState<T | null>(() => readCache<T>(key))
-  const [loading, setLoading] = useState(false)
+  // Start `loading` true when there is no cache to paint, so first-ever visits
+  // show the skeleton from the very first frame instead of flashing "empty".
+  const [loading, setLoading] = useState(() => readCache<T>(key) == null)
   const [error, setError] = useState<string | null>(null)
 
   // When `key` changes, the effect that swaps in the new value runs *after*
@@ -34,18 +36,35 @@ export function useCachedResource<T>(
     setData(readCache<T>(key))
   }
 
+  // Always call the latest fetcher: deps can change (auth, tab gating) without
+  // the key changing, and a refresh memoized on [key] alone would re-run a
+  // stale closure — e.g. a sign-in that leaves a gated tab permanently empty.
+  const fetcherRef = useRef(fetcher)
+  fetcherRef.current = fetcher
+
+  // Generation counter: a slow response from a superseded key/deps run must
+  // not clobber the current one (shapes differ per key — it could crash).
+  const genRef = useRef(0)
+
   const refresh = useCallback(() => {
+    const gen = ++genRef.current
     setLoading(true)
-    fetcher()
+    fetcherRef
+      .current()
       .then((d) => {
+        if (gen !== genRef.current) return
         setData(d)
-        writeCache(key, d)
+        writeCache(keyRef.current, d)
         setError(null)
       })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key])
+      .catch((e) => {
+        if (gen !== genRef.current) return
+        setError((e as Error).message)
+      })
+      .finally(() => {
+        if (gen === genRef.current) setLoading(false)
+      })
+  }, [])
 
   useEffect(() => {
     setData(readCache<T>(key)) // show this key's cache immediately

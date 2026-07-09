@@ -5,15 +5,11 @@ import FeedState from '../components/FeedState'
 import FeedGrid from '../components/FeedGrid'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
-import { useNotify } from '../context/notify'
-import { useQuality } from '../context/quality'
+import { useDownload } from '../hooks/useDownload'
 import { DEFAULT_ORDER, type Order } from '../lib/feedOptions'
-import type { Content } from '@shared/types'
 
 /** A niche's gifs, with an order selector; opening a clip enables niche voting. */
 export default function NicheDetail({ id, title }: { id: string; title: string }): JSX.Element {
-  const notify = useNotify()
-  const { quality } = useQuality()
   const [mode, setMode] = useViewMode('niche', 'grid')
   const [order, setOrder] = useState<Order>(DEFAULT_ORDER)
 
@@ -24,12 +20,7 @@ export default function NicheDetail({ id, title }: { id: string; title: string }
     { nicheId: id }
   )
 
-  const dl = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
-  }
+  const dl = useDownload()
 
   return (
     <div className="page">
@@ -63,6 +54,8 @@ export default function NicheDetail({ id, title }: { id: string; title: string }
         onEndReached={feed.loadMore}
         hasMore={feed.hasMore}
         loading={feed.loading}
+        error={feed.error}
+        onRetry={feed.loadMore}
       />
     </div>
   )

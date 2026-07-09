@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Collection } from '@shared/types'
 import { useNotify } from '../context/notify'
 
@@ -17,103 +17,21 @@ function emitCollectionChange(folderId: string, gifId: string, action: 'add' | '
   window.dispatchEvent(new CustomEvent('rgd:collection-changed', { detail: { folderId, gifId, action } }))
 }
 
-// Midnight Press inline styles (tokens.css is off-limits for this task).
-// Rendered as a centered modal so the rail can never clip it off-screen.
-const backdropStyle: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  zIndex: 60,
-  background: 'rgba(0, 0, 0, 0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center'
-}
-
-const panelStyle: CSSProperties = {
-  width: 360,
-  maxWidth: 'calc(100vw - 48px)',
-  maxHeight: '70vh',
-  overflowY: 'auto',
-  background: 'var(--panel)',
-  border: '1px solid var(--line2)',
-  borderRadius: 12,
-  boxShadow: '0 24px 60px rgba(0, 0, 0, 0.7)',
-  padding: 8,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2
-}
-
-const rowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
-  width: '100%',
-  textAlign: 'left',
-  background: 'none',
-  border: 0,
-  borderRadius: 7,
-  padding: '8px 10px',
-  color: 'var(--ink)',
-  cursor: 'pointer',
-  font: 'inherit',
-  fontSize: 13
-}
-
-const thumbBoxStyle: CSSProperties = {
-  flex: 'none',
-  width: 40,
-  height: 28,
-  borderRadius: 5,
-  overflow: 'hidden',
-  background: 'var(--bg)',
-  border: '1px solid var(--line2)'
-}
-
-const thumbImgStyle: CSSProperties = {
-  width: '100%',
-  height: '100%',
-  objectFit: 'cover'
-}
-
-const countStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 10,
-  letterSpacing: '0.04em',
-  color: 'var(--dim)',
-  flex: 'none'
-}
-
-const labelStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 10,
-  textTransform: 'uppercase',
-  letterSpacing: '0.16em',
-  color: 'var(--dim)',
-  padding: '6px 10px 4px'
-}
-
-const hintStyle: CSSProperties = {
-  fontFamily: 'var(--mono)',
-  fontSize: 11,
-  letterSpacing: '0.03em',
-  color: 'var(--mut)',
-  padding: '10px 10px 12px',
-  lineHeight: 1.5
-}
-
 /**
- * Popover listing the user's collections. Clicking one adds the current gif;
- * a "New collection…" row reveals an inline input that creates + refreshes.
- * Requires auth — degrades to a hint when the list can't load or is empty.
+ * Popover listing the user's collections. Clicking one toggles membership of
+ * the current gif; "New collection…" reveals an inline input that creates the
+ * folder AND files the gif into it — one gesture, one toast.
+ * Anchored to its trigger via `.menu-panel`; outside clicks and Escape close.
  */
 export default function CollectionMenu({ contentId, onClose }: CollectionMenuProps): JSX.Element {
   const notify = useNotify()
 
   const [collections, setCollections] = useState<Collection[] | null>(null)
   const [inIds, setInIds] = useState<Set<string>>(new Set())
-  const [failed, setFailed] = useState(false)
+  // Two distinct failure states: signed out gets the auth hint, everything
+  // else gets the real error + retry. Blaming auth for a network blip lies.
+  const [signedOut, setSignedOut] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -130,10 +48,16 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
       ])
       setCollections(list)
       setInIds(new Set(ids))
-      setFailed(false)
-    } catch {
+      setSignedOut(false)
+      setLoadError(null)
+    } catch (e) {
+      const authed = await window.api
+        .authStatus()
+        .then((s) => s.authenticated)
+        .catch(() => false)
       setCollections([])
-      setFailed(true)
+      setSignedOut(!authed)
+      setLoadError(authed ? (e instanceof Error ? e.message : String(e)) : null)
     }
   }
 
@@ -142,18 +66,54 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
     void load()
   }, [])
 
-  // Esc closes the menu (and is stopped from also closing the player). Outside
-  // clicks are handled by the backdrop's onClick.
+  // Keyboard while open: Esc closes (captured so the player's own Esc handler
+  // never sees it and closes the whole overlay), ArrowUp/Down rove focus over
+  // the row buttons (also captured, so the player doesn't step clips).
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
         onClose()
+        return
       }
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      // Leave arrows alone while typing a collection name.
+      if ((e.target as HTMLElement | null)?.tagName === 'INPUT') return
+      const rows = Array.from(
+        rootRef.current?.querySelectorAll<HTMLButtonElement>('.menu-row:not(:disabled)') ?? []
+      )
+      if (rows.length === 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      const i = rows.indexOf(document.activeElement as HTMLButtonElement)
+      const next =
+        e.key === 'ArrowDown'
+          ? i < 0
+            ? 0
+            : (i + 1) % rows.length
+          : i < 0
+            ? rows.length - 1
+            : (i - 1 + rows.length) % rows.length
+      rows[next].focus()
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
+  }, [onClose])
+
+  // Outside clicks close and are swallowed (capture phase), matching the old
+  // backdrop: the first click dismisses the menu instead of also re-toggling
+  // the trigger or activating whatever else was underneath.
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent): void => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+      }
+    }
+    document.addEventListener('click', onDocClick, true)
+    return () => document.removeEventListener('click', onDocClick, true)
   }, [onClose])
 
   // Focus the input when the create row appears.
@@ -204,10 +164,23 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
     setSaving(true)
     try {
       await window.api.createCollection(name)
-      notify('Created ' + name, 'success')
+      // createCollection returns no id, so refetch and match by name — the
+      // user's intent was "save THIS gif into a new folder", not just "make
+      // an empty folder", so finish the whole gesture here.
+      const list = await window.api.getCollections()
+      setCollections(list)
+      const created = list.find((c) => c.name === name)
+      if (created) {
+        await window.api.addToCollection(created.id, contentId)
+        setInIds((prev) => new Set(prev).add(created.id))
+        emitCollectionChange(created.id, contentId, 'add')
+        notify('Added to ' + name, 'success')
+      } else {
+        // Folder exists but we couldn't spot it in the refetch — still created.
+        notify('Created ' + name, 'success')
+      }
       setNewName('')
       setCreating(false)
-      await load()
     } catch (e) {
       notify('Create failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     } finally {
@@ -215,65 +188,63 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
     }
   }
 
+  const retry = (): void => {
+    setCollections(null)
+    setLoadError(null)
+    void load()
+  }
+
   return (
-    <div style={backdropStyle} onClick={onClose} onWheel={(e) => e.stopPropagation()}>
-      <div
-        ref={rootRef}
-        style={panelStyle}
-        role="menu"
-        aria-label="Add to collection"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={labelStyle}>add to collection</div>
+    <div
+      ref={rootRef}
+      className="menu-panel"
+      aria-label="Add to collection"
+      onWheel={(e) => e.stopPropagation()}
+    >
+      <div className="menu-label">Add to collection</div>
 
       {collections === null ? (
-        <div style={hintStyle}>Loading…</div>
-      ) : failed ? (
-        <div style={hintStyle}>Sign in to use collections.</div>
+        <div className="menu-hint">Loading…</div>
+      ) : signedOut ? (
+        <div className="menu-hint">Sign in to use collections.</div>
+      ) : loadError ? (
+        <>
+          <div className="menu-hint">Couldn’t load collections: {loadError}</div>
+          <button type="button" className="btn btn-sm" onClick={retry}>
+            Try again
+          </button>
+        </>
       ) : collections.length === 0 ? (
-        <div style={hintStyle}>No collections yet — create one below.</div>
+        <div className="menu-hint">No collections yet — create one below.</div>
       ) : (
         collections.map((c) => (
           <button
             key={c.id}
             type="button"
-            role="menuitem"
-            style={rowStyle}
+            className="menu-row"
             disabled={busyId !== null}
             onClick={() => toggle(c)}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--bg)'
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'none'
-            }}
           >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 9, overflow: 'hidden' }}>
-              <span style={thumbBoxStyle}>
-                {c.thumbnailUrl && (
-                  <img src={c.thumbnailUrl} alt="" loading="lazy" style={thumbImgStyle} />
-                )}
-              </span>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {busyId === c.id ? (inIds.has(c.id) ? 'Removing…' : 'Adding…') : c.name}
-              </span>
+            <span className="list-main list-title">
+              {busyId === c.id ? (inIds.has(c.id) ? 'Removing…' : 'Adding…') : c.name}
             </span>
             {inIds.has(c.id) ? (
-              <span style={{ ...countStyle, color: 'var(--ok)' }} title="Click to remove from this collection">
-                ✓ in
+              <span className="pill pill-ok" title="Click to remove from this collection">
+                in
               </span>
             ) : (
-              <span style={countStyle}>{c.contentCount}</span>
+              <span className="readout">{c.contentCount}</span>
             )}
           </button>
         ))
       )}
 
+      <hr className="menu-sep" />
+
       {creating ? (
-        <div style={{ display: 'flex', gap: 6, padding: '6px 6px 4px' }}>
+        <div className="field">
           <input
             ref={inputRef}
-            style={{ flex: 1, minWidth: 0, fontSize: 13, padding: '7px 9px' }}
             placeholder="Collection name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -290,26 +261,14 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
             disabled={saving || !newName.trim()}
             onClick={() => void create()}
           >
-            {saving ? '…' : 'Add'}
+            {saving ? 'Adding…' : 'Add'}
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          role="menuitem"
-          style={{ ...rowStyle, color: 'var(--ember)' }}
-          onClick={() => setCreating(true)}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'var(--bg)'
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'none'
-          }}
-        >
-          <span>+ New collection…</span>
+        <button type="button" className="menu-row" onClick={() => setCreating(true)}>
+          + New collection…
         </button>
       )}
-      </div>
     </div>
   )
 }

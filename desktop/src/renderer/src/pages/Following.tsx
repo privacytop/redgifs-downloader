@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import FeedState from '../components/FeedState'
 import SignInGate from '../components/SignInGate'
+import CreatorCard from '../components/CreatorCard'
 import { useNav } from '../context/nav'
 import { useAuthed } from '../hooks/useAuthed'
-import { formatCount } from '../lib/format'
 import { readCache } from '../lib/cache'
 import type { UserResult } from '@shared/types'
 
@@ -24,9 +24,8 @@ export default function Following(): JSX.Element {
     if (loading || (!hasMore && !force)) return
     setLoading(true)
     setError(null)
-    const page = pageRef.current
     window.api
-      .getFollowing(page)
+      .getFollowing(pageRef.current)
       .then((res) => {
         const list = res.items ?? []
         setCreators((prev) => {
@@ -38,17 +37,16 @@ export default function Following(): JSX.Element {
         pageRef.current = res.page + 1
       })
       .catch((e: Error) => {
-        setHasMore(false)
-        if (page === 1) setError(e.message) // only surface a genuine first-page failure
+        // Surface the failure but keep hasMore — pageRef never advanced, so a
+        // retry (inline row here, FeedState on page 1) resumes from this page.
+        setError(e.message)
       })
       .finally(() => setLoading(false))
   }, [loading, hasMore])
 
-  // A first-page failure sets hasMore=false, which would make loadMore's guard
-  // reject a retry — so retry re-opens the gate and forces a fresh fetch.
+  // Retry re-requests the page that just failed.
   const retry = useCallback(() => {
     setError(null)
-    setHasMore(true)
     loadMore(true)
   }, [loadMore])
 
@@ -84,6 +82,10 @@ export default function Following(): JSX.Element {
   // empty message flashes in the window before the first fetch starts.
   const isEmpty = authed === true && creators.length === 0
 
+  // Mid-list failure (content already on screen): FeedState stays silent, so
+  // render the same inline error row FeedGrid uses instead of stopping dead.
+  const failed = Boolean(error) && creators.length > 0 && !loading
+
   return (
     <div className="page">
       <PageHeader kicker="following" kickerIndex={3} title="Following" />
@@ -103,35 +105,24 @@ export default function Following(): JSX.Element {
             <CreatorCard
               key={u.username}
               user={u}
-              onOpen={() => nav.navigate({ name: 'creator', username: u.username })}
+              onOpen={(username) => nav.navigate({ name: 'creator', username })}
             />
           ))}
         </div>
       )}
 
-      {authed === true && hasMore && <div ref={sentinelRef} style={{ height: 1 }} />}
-      {loading && creators.length > 0 && <div className="readout">Loading…</div>}
-    </div>
-  )
-}
-
-/** A single creator result: avatar + @name, click → creator page. */
-function CreatorCard({ user, onOpen }: { user: UserResult; onOpen: () => void }): JSX.Element {
-  return (
-    <button type="button" className="creator-card" onClick={onOpen} title={`View @${user.username}`}>
-      <div className="creator-avatar" aria-hidden="true">
-        {user.profileImageUrl ? (
-          <img src={user.profileImageUrl} alt={'@' + user.username} loading="lazy" />
-        ) : (
-          <span>{(user.name || user.username || '?').trim().charAt(0).toUpperCase() || '?'}</span>
-        )}
-      </div>
-      <div className="creator-info">
-        <div className="creator-name">@{user.username}</div>
-        <div className="creator-sub">
-          {formatCount(user.followers)} followers · {formatCount(user.gifs)} gifs
+      {loading && creators.length > 0 && <div className="feed-loading">Loading…</div>}
+      {failed && (
+        <div className="feed-error" role="alert">
+          <span>Couldn’t load more — {error}</span>
+          <button type="button" className="btn btn-sm" onClick={retry}>
+            Try again
+          </button>
         </div>
-      </div>
-    </button>
+      )}
+      {authed === true && hasMore && !failed && (
+        <div ref={sentinelRef} className="feed-sentinel" aria-hidden="true" />
+      )}
+    </div>
   )
 }

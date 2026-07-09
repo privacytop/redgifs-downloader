@@ -5,16 +5,12 @@ import FeedGrid from '../components/FeedGrid'
 import FeedState from '../components/FeedState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
-import { useNotify } from '../context/notify'
-import { useQuality } from '../context/quality'
+import { useDownload } from '../hooks/useDownload'
 import { DEFAULT_ORDER, type Order, type ContentType } from '../lib/feedOptions'
-import type { Content } from '@shared/types'
 
 /** Browse the latest gifs for a single tag (`#tag`). */
 export default function TagDetail({ tag }: { tag: string }): JSX.Element {
-  const notify = useNotify()
-  const { quality } = useQuality()
-  const [mode, setMode] = useViewMode('tag')
+  const [mode, setMode] = useViewMode('tag', 'grid')
   const [order, setOrder] = useState<Order>(DEFAULT_ORDER)
   const [type, setType] = useState<ContentType>('g')
 
@@ -24,12 +20,7 @@ export default function TagDetail({ tag }: { tag: string }): JSX.Element {
     [tag, order, type]
   )
 
-  const dl = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
-  }
+  const dl = useDownload()
 
   return (
     <div className="page">
@@ -64,6 +55,8 @@ export default function TagDetail({ tag }: { tag: string }): JSX.Element {
         onEndReached={feed.loadMore}
         hasMore={feed.hasMore}
         loading={feed.loading}
+        error={feed.error}
+        onRetry={feed.loadMore}
       />
     </div>
   )

@@ -4,13 +4,14 @@ import FeedControls from '../components/FeedControls'
 import FeedState from '../components/FeedState'
 import FeedGrid from '../components/FeedGrid'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
+import { useDownload } from '../hooks/useDownload'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
 import { useQuality } from '../context/quality'
 import { useNav } from '../context/nav'
 import { formatCount } from '../lib/format'
 import { DEFAULT_ORDER, typeNoun, type ContentType, type Order } from '../lib/feedOptions'
-import type { Content, UserProfile } from '@shared/types'
+import type { UserProfile } from '@shared/types'
 
 const TAG_CAP = 24
 
@@ -19,6 +20,7 @@ export default function Creator({ username }: { username: string }): JSX.Element
   const notify = useNotify()
   const { navigate } = useNav()
   const { quality } = useQuality()
+  const download = useDownload()
   const [mode, setMode] = useViewMode('creator', 'grid')
   const [type, setType] = useState<ContentType>('g')
   const [order, setOrder] = useState<Order>(DEFAULT_ORDER)
@@ -26,9 +28,13 @@ export default function Creator({ username }: { username: string }): JSX.Element
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [tags, setTags] = useState<string[]>([])
   const [showAllTags, setShowAllTags] = useState(false)
+  // "Download all" lifecycle: disabled from click until the queue call lands,
+  // and kept disabled once queued so a re-click can't queue the catalog twice.
+  const [queueState, setQueueState] = useState<'idle' | 'queuing' | 'queued'>('idle')
 
   useEffect(() => {
     let alive = true
+    setQueueState('idle') // new creator, new catalog — re-arm "Download all"
     window.api
       .getUser(username)
       .then((p) => {
@@ -56,22 +62,22 @@ export default function Creator({ username }: { username: string }): JSX.Element
     [username, type, order]
   )
 
-  const dl = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
-  }
-
   const downloadAll = (): void => {
+    setQueueState('queuing')
     window.api
       .startDownload({ type: 'user', username, quality })
-      .then(() => notify('Queued @' + username + ' — downloading all', 'success'))
-      .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
+      .then(() => {
+        setQueueState('queued')
+        notify('Queued @' + username + ' — downloading all', 'success')
+      })
+      .catch((e) => {
+        setQueueState('idle') // nothing was queued — let the user try again
+        notify('Download failed: ' + (e as Error).message, 'error')
+      })
   }
 
   const controls = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+    <div className="controls">
       <FeedControls
         mode={mode}
         onModeChange={setMode}
@@ -80,8 +86,14 @@ export default function Creator({ username }: { username: string }): JSX.Element
         type={type}
         onTypeChange={setType}
       />
-      <button className="btn btn-ember btn-sm" onClick={downloadAll}>
-        Download all
+      <button
+        type="button"
+        className="btn btn-ember btn-sm"
+        onClick={downloadAll}
+        disabled={queueState !== 'idle'}
+        title="Downloads the full catalog — ignores the filters above"
+      >
+        {queueState === 'queuing' ? 'Queuing…' : queueState === 'queued' ? 'Queued' : 'Download all'}
       </button>
     </div>
   )
@@ -99,51 +111,18 @@ export default function Creator({ username }: { username: string }): JSX.Element
     <div className="page">
       <PageHeader kicker="creator" title={'@' + username} right={controls} />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
-        <div
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: '50%',
-            flexShrink: 0,
-            overflow: 'hidden',
-            border: '1px solid var(--line2)',
-            background: 'var(--panel)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
+      <div className="hero">
+        <div className="hero-avatar" aria-hidden="true">
           {profile?.profilePic ? (
-            <img
-              src={profile.profilePic}
-              alt={'@' + username}
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
+            <img src={profile.profilePic} alt="" loading="lazy" />
           ) : (
-            <span
-              style={{
-                fontFamily: 'var(--serif)',
-                fontSize: 24,
-                color: 'var(--dim)'
-              }}
-            >
-              {username.charAt(0).toUpperCase()}
-            </span>
+            <span>{username.charAt(0).toUpperCase()}</span>
           )}
         </div>
-        <div style={{ minWidth: 0 }}>
-          <div
-            style={{
-              fontFamily: 'var(--serif)',
-              fontSize: 22,
-              color: 'var(--ink)',
-              lineHeight: 1.2
-            }}
-          >
-            {'@' + username}
-          </div>
-          <div className="statset" style={{ marginTop: 6 }}>
+        <div className="hero-main">
+          <div className="hero-name">{'@' + username}</div>
+          {/* hero-sub only supplies the offset under the name — each .stat restyles itself */}
+          <div className="hero-sub statset">
             {stat(profile?.followers ?? 0, 'Followers')}
             {stat(profile?.totalGifs ?? 0, 'Gifs')}
             {stat(profile?.views ?? 0, 'Views')}
@@ -187,10 +166,12 @@ export default function Creator({ username }: { username: string }): JSX.Element
         items={feed.contents}
         mode={mode}
         onOpen={feed.openAt}
-        onDownload={dl}
+        onDownload={download}
         onEndReached={feed.loadMore}
         hasMore={feed.hasMore}
         loading={feed.loading}
+        error={feed.error}
+        onRetry={feed.loadMore}
       />
     </div>
   )

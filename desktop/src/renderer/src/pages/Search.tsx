@@ -3,38 +3,18 @@ import PageHeader from '../components/PageHeader'
 import FeedGrid from '../components/FeedGrid'
 import FeedControls from '../components/FeedControls'
 import FeedState from '../components/FeedState'
+import CreatorCard from '../components/CreatorCard'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
+import { useDownload } from '../hooks/useDownload'
 import { useViewMode } from '../hooks/useViewMode'
 import { useNav } from '../context/nav'
-import { useNotify } from '../context/notify'
-import { useQuality } from '../context/quality'
 import { formatCount } from '../lib/format'
-import type { ContentType } from '../lib/feedOptions'
-import type { Content, Niche, TagSuggestion, UserResult } from '@shared/types'
+import { SEARCH_ORDERS, type ContentType, type Order } from '../lib/feedOptions'
+import type { Niche, TagSuggestion, UserResult } from '@shared/types'
 
-/** A single creator result: avatar + @name, click → creator page. */
-function CreatorCard({ user, onOpen }: { user: UserResult; onOpen: (u: string) => void }): JSX.Element {
-  return (
-    <button
-      type="button"
-      className="creator-card"
-      onClick={() => onOpen(user.username)}
-      title={`View @${user.username}`}
-    >
-      <div className="creator-avatar" aria-hidden="true">
-        {user.profileImageUrl ? (
-          <img src={user.profileImageUrl} alt={'@' + user.username} loading="lazy" />
-        ) : (
-          <span>{(user.username?.[0] ?? '?').toUpperCase()}</span>
-        )}
-      </div>
-      <div className="creator-info">
-        <div className="creator-name">@{user.username}</div>
-        <div className="creator-sub">{formatCount(user.followers)} followers</div>
-      </div>
-    </button>
-  )
-}
+// tokens.css has no section-spacing utility, so the result blocks share one
+// constant to stay on the same 26px rhythm as .page-header.
+const sectionGap = { marginBottom: 26 } as const
 
 /**
  * Search page — mirrors RedGifs: tag suggestions, matching niches, creators,
@@ -42,12 +22,14 @@ function CreatorCard({ user, onOpen }: { user: UserResult; onOpen: (u: string) =
  */
 export default function Search({ query }: { query: string }): JSX.Element {
   const { navigate } = useNav()
-  const notify = useNotify()
-  const { quality } = useQuality()
+  const download = useDownload()
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([])
   const [niches, setNiches] = useState<Niche[]>([])
   const [creators, setCreators] = useState<UserResult[]>([])
   const [type, setType] = useState<ContentType>('g')
+  // Relevance ranking is search-only, so this page defaults to `score` and
+  // offers it via SEARCH_ORDERS on top of the shared set.
+  const [order, setOrder] = useState<Order>('score')
   const [mode, setMode] = useViewMode('search', 'grid')
 
   useEffect(() => {
@@ -71,17 +53,10 @@ export default function Search({ query }: { query: string }): JSX.Element {
   }, [query])
 
   const feed = usePlayableFeed(
-    (p) => window.api.searchGifs({ search: query, type, order: 'score', page: p }),
-    `search:${type}:${query}`,
-    [query, type]
+    (p) => window.api.searchGifs({ search: query, type, order, page: p }),
+    `Search “${query}”`,
+    [query, type, order]
   )
-
-  const dl = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
-  }
 
   const openCreator = (username: string): void => navigate({ name: 'creator', username })
   const openTag = (tag: string): void => navigate({ name: 'tag', tag })
@@ -92,11 +67,21 @@ export default function Search({ query }: { query: string }): JSX.Element {
       <PageHeader
         kicker="search"
         title={query || 'Search'}
-        right={<FeedControls mode={mode} onModeChange={setMode} type={type} onTypeChange={setType} />}
+        right={
+          <FeedControls
+            mode={mode}
+            onModeChange={setMode}
+            order={order}
+            onOrderChange={setOrder}
+            orderOptions={SEARCH_ORDERS}
+            type={type}
+            onTypeChange={setType}
+          />
+        }
       />
 
       {suggestions.length > 0 && (
-        <section style={{ marginBottom: 26 }}>
+        <section style={sectionGap}>
           <div className="section-label">Tags</div>
           <div className="chip-row">
             {suggestions.map((s) => (
@@ -110,7 +95,7 @@ export default function Search({ query }: { query: string }): JSX.Element {
       )}
 
       {niches.length > 0 && (
-        <section style={{ marginBottom: 26 }}>
+        <section style={sectionGap}>
           <div className="section-label">Niches</div>
           <div className="tile-grid">
             {niches.map((n) => (
@@ -127,7 +112,7 @@ export default function Search({ query }: { query: string }): JSX.Element {
       )}
 
       {creators.length > 0 && (
-        <section style={{ marginBottom: 26 }}>
+        <section style={sectionGap}>
           <div className="section-label">Creators</div>
           <div className="creator-row">
             {creators.map((u) => (
@@ -137,7 +122,8 @@ export default function Search({ query }: { query: string }): JSX.Element {
         </section>
       )}
 
-      <section>
+      <section style={sectionGap}>
+        <div className="section-label">Media</div>
         <FeedState
           loading={feed.loading}
           error={feed.error}
@@ -151,10 +137,12 @@ export default function Search({ query }: { query: string }): JSX.Element {
           items={feed.contents}
           mode={mode}
           onOpen={feed.openAt}
-          onDownload={dl}
+          onDownload={download}
           onEndReached={feed.loadMore}
           hasMore={feed.hasMore}
           loading={feed.loading}
+          error={feed.error}
+          onRetry={feed.loadMore}
         />
       </section>
     </div>

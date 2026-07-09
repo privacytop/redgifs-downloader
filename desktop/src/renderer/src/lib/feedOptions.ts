@@ -12,7 +12,7 @@
  * broken on most feeds.
  */
 
-export type Order = 'latest' | 'best' | 'top' | 'new'
+export type Order = 'latest' | 'best' | 'top' | 'new' | 'score'
 
 export const ORDERS: { id: Order; label: string }[] = [
   { id: 'latest', label: 'Latest' },
@@ -22,6 +22,16 @@ export const ORDERS: { id: Order; label: string }[] = [
 ]
 
 export const DEFAULT_ORDER: Order = 'latest'
+
+/**
+ * Search-only order list: `score` (relevance) is valid solely on the text
+ * search endpoint — every other feed keeps the shared `ORDERS` set. Search
+ * defaults to relevance, matching redgifs.com.
+ */
+export const SEARCH_ORDERS: { id: Order; label: string }[] = [
+  { id: 'score', label: 'Relevance' },
+  ...ORDERS
+]
 
 /** RedGifs content-type param: `g` = videos, `i` = images. */
 export type ContentType = 'g' | 'i'

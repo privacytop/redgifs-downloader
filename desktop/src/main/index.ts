@@ -13,7 +13,7 @@ let storage: SqliteStorage
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 940, minHeight: 640,
-    backgroundColor: '#0f172a', show: false, autoHideMenuBar: true,
+    backgroundColor: '#0c0b0e', show: false, autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

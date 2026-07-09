@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 /**
  * How poster thumbnails are chosen for media cards:
@@ -11,10 +11,15 @@ export type ThumbMode = 'default' | 'auto' | 'middle' | 'random'
 
 const VALID: ThumbMode[] = ['default', 'auto', 'middle', 'random']
 const STORAGE_KEY = 'thumbnailMode'
+// Same-window broadcast: localStorage's `storage` event only fires in OTHER
+// windows, so a CustomEvent keeps every mounted card in sync when Settings
+// changes the mode.
+const CHANGE_EVENT = 'rgd:thumbmode-changed'
 
 /**
  * Thumbnail-frame mode persisted to localStorage under `thumbnailMode`.
  * Defaults to `auto` when nothing is stored or storage is unavailable.
+ * All instances stay in sync live via a window CustomEvent.
  */
 export function useThumbnailMode(): [ThumbMode, (m: ThumbMode) => void] {
   const [mode, setMode] = useState<ThumbMode>(() => {
@@ -27,6 +32,15 @@ export function useThumbnailMode(): [ThumbMode, (m: ThumbMode) => void] {
     return 'auto'
   })
 
+  useEffect(() => {
+    const onChange = (e: Event): void => {
+      const next = (e as CustomEvent<ThumbMode>).detail
+      if (VALID.includes(next)) setMode(next)
+    }
+    window.addEventListener(CHANGE_EVENT, onChange)
+    return () => window.removeEventListener(CHANGE_EVENT, onChange)
+  }, [])
+
   const set = useCallback((m: ThumbMode): void => {
     setMode(m)
     try {
@@ -34,6 +48,7 @@ export function useThumbnailMode(): [ThumbMode, (m: ThumbMode) => void] {
     } catch {
       /* ignore */
     }
+    window.dispatchEvent(new CustomEvent<ThumbMode>(CHANGE_EVENT, { detail: m }))
   }, [])
 
   return [mode, set]

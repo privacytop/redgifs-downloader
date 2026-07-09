@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import EmptyState from './EmptyState'
 
 interface Props {
   /** Reset the boundary when this value changes (e.g. the active route). */
@@ -36,26 +37,18 @@ export default class ErrorBoundary extends Component<Props, State> {
     if (this.state.error) {
       return (
         <div className="page">
-          <div
-            style={{
-              margin: '40px auto',
-              maxWidth: 480,
-              textAlign: 'center',
-              fontFamily: 'var(--mono)',
-              color: 'var(--mut)'
-            }}
-          >
-            <div style={{ fontSize: 28, marginBottom: 12 }}>⚠</div>
-            <div style={{ fontSize: 15, color: 'var(--cream)', marginBottom: 8 }}>
-              This page hit an error
-            </div>
-            <div style={{ fontSize: 12, lineHeight: 1.6, marginBottom: 18 }}>
-              {this.state.error.message}
-            </div>
-            <button className="btn btn-ember btn-sm" onClick={() => this.setState({ error: null })}>
-              Try again
-            </button>
-          </div>
+          <EmptyState
+            message="Something broke"
+            hint={this.state.error.message}
+            action={
+              <button
+                className="btn btn-ember btn-sm"
+                onClick={() => this.setState({ error: null })}
+              >
+                Try again
+              </button>
+            }
+          />
         </div>
       )
     }

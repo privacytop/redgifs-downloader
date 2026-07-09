@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Content } from '@shared/types'
 import type { PlaySource } from './PlayerProvider'
 import { useNotify } from '../context/notify'
@@ -8,18 +8,25 @@ import { useQuality } from '../context/quality'
 import { formatViews, formatDuration } from '../lib/format'
 import { readCache, writeCache } from '../lib/cache'
 import CollectionMenu from './CollectionMenu'
+import { IconDownload, IconUsers, IconX } from '../components/icons'
 
 interface ImmersivePlayerProps {
   source: PlaySource
   onClose: () => void
 }
 
-// Ignore wheel/key repeats faster than this while navigating clips.
-const STEP_DEBOUNCE_MS = 350
+// Wheel travel (px of deltaY) that counts as one deliberate step.
+const WHEEL_STEP_PX = 60
+// Lock stepping until the slide transition settles (t-med 240ms + margin) —
+// this is what absorbs trackpad inertia instead of skipping three clips.
+const STEP_LOCK_MS = 340
 // When within this many of the end, prefetch more via loadMore().
 const PREFETCH_WITHIN = 3
-// localStorage key remembering the user's mute preference (default: unmuted).
+// Chrome (chip/close/rail overlays) fades after this much pointer stillness.
+const IDLE_MS = 2500
+// localStorage keys: mute preference; one-time "scroll for next" hint.
 const MUTE_KEY = 'player:muted'
+const HINT_KEY = 'player:hinted'
 
 /**
  * Cached fetch of the accounts the signed-in user follows. Loaded once per app
@@ -57,11 +64,14 @@ function loadLikedIds(): Promise<void> {
 }
 
 /**
- * Full-screen immersive video player. Wheel + Arrow up/down move between clips
- * (debounced); clicking the video toggles play/pause; a control bar exposes
- * play/pause, mute, and a seek scrubber. The rail carries Save, Like, Copy
- * link, Follow and Add-to-collection actions. Save downloads the current clip;
- * Esc / the close button dismiss.
+ * Full-screen immersive player built as a vertical pager: the current clip and
+ * its neighbours are mounted as stacked slides translated ±100%, so stepping
+ * slides the deck (and the next clip is already buffering) instead of
+ * hard-swapping one <video>. Wheel input is accumulated and locked per step —
+ * a trackpad flick advances exactly one clip. Keyboard: ↑/↓ step, Space
+ * play/pause, ←/→ seek, M mute, L like, S save, Esc closes. Chrome fades
+ * while the pointer is idle. The rail carries Save, Like, Copy link, Follow
+ * and Add-to-collection; like changes broadcast `rgd:like-changed`.
  */
 export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProps): JSX.Element {
   const notify = useNotify()
@@ -93,6 +103,19 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   const [following, setFollowing] = useState(false)
   const [collectionOpen, setCollectionOpen] = useState(false)
 
+  // --- idle chrome ----------------------------------------------------------
+  const [idle, setIdle] = useState(false)
+  const idleTimer = useRef<number | undefined>(undefined)
+
+  // --- one-time hint ---------------------------------------------------------
+  const [showHint] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(HINT_KEY) !== '1'
+    } catch {
+      return true
+    }
+  })
+
   // --- "see similar" mode: scroll into gifs recommended for one anchor clip ---
   const [similar, setSimilar] = useState(false)
   const similarRef = useRef(false)
@@ -101,33 +124,50 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   // The feed to return to when leaving similar mode.
   const savedFeedRef = useRef<{ items: Content[]; index: number } | null>(null)
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const lastStepRef = useRef(0)
+  // One <video> per mounted slide, keyed by content id.
+  const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
+  const wheelAccRef = useRef(0)
+  const stepLockRef = useRef(false)
   const loadingRef = useRef(false)
   // True while the pointer is over the scrubber — suppresses wheel-to-next.
   const overScrubberRef = useRef(false)
-  // Track the latest items for callbacks without stale closures.
+  // Track the latest items/index for callbacks without stale closures.
   const itemsRef = useRef(items)
   itemsRef.current = items
+  const indexRef = useRef(index)
+  indexRef.current = index
 
-  const current = items[index]
+  const current: Content | undefined = items[index]
 
   // Latest mute preference, read inside startPlayback without re-creating it.
   const mutedRef = useRef(muted)
   mutedRef.current = muted
-  // Latest clip id, so the async liked-ids load can relight the right heart.
+  // Latest clip id, so async loads can target the right clip.
   const currentIdRef = useRef(current?.id)
   currentIdRef.current = current?.id
 
+  const currentVideo = useCallback(
+    (): HTMLVideoElement | undefined =>
+      currentIdRef.current ? videoRefs.current.get(currentIdRef.current) : undefined,
+    []
+  )
+
+  // Whether playback SHOULD be running — set false only by an explicit pause.
+  // onCanPlay refires after every seek, so without this a paused clip would
+  // resume the moment the user scrubs or presses ←/→.
+  const wantPlayingRef = useRef(true)
+
   // Autoplay is permitted (main sets autoplay-policy=no-user-gesture-required),
-  // so just play with the user's mute preference. Wired to the video's onCanPlay
-  // and the per-clip effect so it runs the moment the media is ready.
+  // so play the current slide with the user's mute preference. Wired to the
+  // video's onCanPlay and the per-clip effect so it runs the moment the media
+  // is ready.
   const startPlayback = useCallback((): void => {
-    const v = videoRef.current
+    if (!wantPlayingRef.current) return
+    const v = currentVideo()
     if (!v) return
     v.muted = mutedRef.current
     v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
-  }, [])
+  }, [currentVideo])
 
   // --- pagination: append more when nearing the end ------------------------
   const appendUnique = useCallback((more: Content[]): void => {
@@ -149,7 +189,10 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
         loadingRef.current = true
         try {
           similarPageRef.current += 1
-          const res = await window.api.recommendSimilar(similarAnchorRef.current, similarPageRef.current)
+          const res = await window.api.recommendSimilar(
+            similarAnchorRef.current,
+            similarPageRef.current
+          )
           appendUnique(res.contents.filter((c) => !isBlocked(c)))
         } catch {
           /* ignore — playback continues with what we have */
@@ -176,7 +219,8 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   // Toggle recommendations: on, scrolling continues into gifs similar to the
   // current clip; off, restores the original feed at the spot you left it.
   const toggleSimilar = useCallback(async (): Promise<void> => {
-    if (!current) return
+    const cur = itemsRef.current[indexRef.current]
+    if (!cur) return
     if (similarRef.current) {
       const saved = savedFeedRef.current
       similarRef.current = false
@@ -187,49 +231,73 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
       }
       return
     }
-    const anchor = current.id
-    savedFeedRef.current = { items: itemsRef.current, index }
+    const anchor = cur.id
+    savedFeedRef.current = { items: itemsRef.current, index: indexRef.current }
     similarAnchorRef.current = anchor
     similarPageRef.current = 1
     try {
       const res = await window.api.recommendSimilar(anchor, 1)
       const recs = res.contents.filter((c) => c.id !== anchor && !isBlocked(c))
       similarRef.current = true
-      setItems([current, ...recs])
+      setItems([cur, ...recs])
       setIndex(0)
       setSimilar(true)
     } catch (e) {
       notify('Couldn’t load similar: ' + (e instanceof Error ? e.message : String(e)), 'error')
     }
-  }, [current, index, isBlocked, notify])
+  }, [isBlocked, notify])
 
-  // --- stepping between clips (debounced) ----------------------------------
+  // --- stepping between clips (locked while the slide transition runs) ------
+  // The target index is computed from refs in the event handler itself: React
+  // only runs setState updaters eagerly when the fiber has no pending update,
+  // and both call sites setIdle() first — side effects inside the updater
+  // would silently not run on those steps.
   const step = useCallback(
     (delta: number): void => {
-      const now = Date.now()
-      if (now - lastStepRef.current < STEP_DEBOUNCE_MS) return
-      lastStepRef.current = now
-      setIndex((i) => {
-        const next = Math.min(Math.max(i + delta, 0), itemsRef.current.length - 1)
-        if (next !== i && delta > 0) void maybeLoadMore(next)
-        return next
-      })
+      if (stepLockRef.current) return
+      const i = indexRef.current
+      const next = Math.min(Math.max(i + delta, 0), itemsRef.current.length - 1)
+      if (next === i) return
+      setIndex(next)
+      if (delta > 0) void maybeLoadMore(next)
+      stepLockRef.current = true
+      window.setTimeout(() => {
+        stepLockRef.current = false
+        wheelAccRef.current = 0 // require a fresh gesture after each step
+      }, STEP_LOCK_MS)
+      try {
+        localStorage.setItem(HINT_KEY, '1')
+      } catch {
+        /* non-fatal */
+      }
     },
     [maybeLoadMore]
   )
 
   // Reset per-clip state AND kick off playback whenever the clip changes —
-  // including the very first mount. Runs after the <video> is in the DOM, so
-  // starting muted (always permitted) then restoring the sound preference plays
-  // reliably without needing a scroll first. Seeding `duration` from the known
-  // clip length makes the scrubber usable immediately, before metadata loads.
+  // including the very first mount. Pauses (and rewinds) every non-current
+  // slide so exactly one clip is ever audible/playing. Seeding `duration` from
+  // the known clip length makes the scrubber usable before metadata loads.
   useEffect(() => {
     setNicheVote(null)
     setLiked(current ? likedIds.has(current.id) : false)
     setCurrentTime(0)
     setDuration(current && Number.isFinite(current.duration) ? current.duration : 0)
     setCollectionOpen(false)
+    // The previous slide's scrubber unmounts without a mouseleave — clear the
+    // wheel suppression or navigation could stay dead until the next hover.
+    overScrubberRef.current = false
+    wantPlayingRef.current = true
+    for (const [id, v] of videoRefs.current) {
+      if (id !== current?.id) {
+        v.pause()
+        if (v.currentTime !== 0) v.currentTime = 0
+      }
+    }
     startPlayback()
+    // Prefetch even when the index didn't move to get here — opening the player
+    // directly on the feed's last item must still start pagination.
+    void maybeLoadMore(indexRef.current + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id])
 
@@ -261,98 +329,79 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     setFollowing(follows.has(current.username.toLowerCase()))
   }, [follows, current])
 
-  // --- keyboard: Esc closes, arrows step -----------------------------------
+  // Pause every element on unmount. Do NOT strip src / call load() in
+  // cleanups: under React StrictMode's dev double-mount that blanked the first
+  // clip until the user scrolled (the old "autoplay only after scrolling" bug).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        step(1)
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        step(-1)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, step])
-
-  // --- wheel: scroll to advance (not while scrubbing) ----------------------
-  const onWheel = useCallback(
-    (e: React.WheelEvent): void => {
-      if (overScrubberRef.current) return
-      if (Math.abs(e.deltaY) < 4) return
-      step(e.deltaY > 0 ? 1 : -1)
-    },
-    [step]
-  )
-
-  // Pause the element on unmount. Do NOT strip src / call load() here: under
-  // React StrictMode's dev double-mount the cleanup fires right after setup, and
-  // blanking the source left the first clip unplayable until you scrolled to a
-  // fresh element (the real cause of "autoplay only works after scrolling").
-  useEffect(() => {
-    const v = videoRef.current
+    const refs = videoRefs.current
     return () => {
-      v?.pause()
+      for (const v of refs.values()) v.pause()
     }
   }, [])
 
-  // Keep the element's muted flag in sync with the mute button + persist it.
+  // Keep the current element's muted flag in sync with the button + persist.
   useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = muted
+    const v = currentVideo()
+    if (v) v.muted = muted
     try {
       localStorage.setItem(MUTE_KEY, muted ? '1' : '0')
     } catch {
       /* storage may be unavailable — non-fatal */
     }
-  }, [muted])
-
-  // Once real metadata arrives, use its (more accurate) duration. Playback is
-  // driven by the per-clip effect + onCanPlay, so don't call play() here.
-  const onLoadedMetadata = useCallback((): void => {
-    const v = videoRef.current
-    if (v && Number.isFinite(v.duration) && v.duration > 0) setDuration(v.duration)
-  }, [])
+  }, [muted, currentVideo])
 
   const togglePlay = useCallback((): void => {
-    const v = videoRef.current
+    const v = currentVideo()
     if (!v) return
     if (v.paused) {
+      wantPlayingRef.current = true
       void v.play().catch(() => setPlaying(false))
     } else {
+      wantPlayingRef.current = false
       v.pause()
     }
-  }, [])
+  }, [currentVideo])
 
-  const onSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>): void => {
-    const v = videoRef.current
-    const t = Number(e.target.value)
-    setCurrentTime(t)
-    if (v) v.currentTime = t
-  }, [])
+  const seekBy = useCallback(
+    (delta: number): void => {
+      const v = currentVideo()
+      if (!v || !Number.isFinite(v.duration)) return
+      v.currentTime = Math.min(Math.max(v.currentTime + delta, 0), v.duration)
+    },
+    [currentVideo]
+  )
+
+  const onSeek = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>): void => {
+      const v = currentVideo()
+      const t = Number(e.target.value)
+      setCurrentTime(t)
+      if (v) v.currentTime = t
+    },
+    [currentVideo]
+  )
 
   const save = useCallback(async (): Promise<void> => {
-    if (!current) return
+    const cur = itemsRef.current[indexRef.current]
+    if (!cur) return
     try {
-      await window.api.downloadContents([current], current.username, quality)
-      notify('Saving @' + current.username, 'success')
+      await window.api.downloadContents([cur], cur.username, quality)
+      notify('Saving @' + cur.username, 'success')
     } catch (e) {
       notify('Save failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     }
-  }, [current, notify, quality])
+  }, [notify, quality])
 
   const copyLink = useCallback(async (): Promise<void> => {
-    if (!current) return
+    const cur = itemsRef.current[indexRef.current]
+    if (!cur) return
     try {
-      await navigator.clipboard.writeText('https://www.redgifs.com/watch/' + current.id)
+      await navigator.clipboard.writeText('https://www.redgifs.com/watch/' + cur.id)
       notify('Link copied', 'success')
     } catch (e) {
       notify('Copy failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     }
-  }, [current, notify])
+  }, [notify])
 
   // Optimistic follow toggle: flip immediately, revert + notify on failure,
   // and keep the shared follows Set in sync so paging reflects the change.
@@ -399,37 +448,118 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   )
 
   // Optimistic like toggle: flip immediately, revert + notify on failure.
+  // Broadcasts `rgd:like-changed` on success so grids (Likes) stay in sync.
   const toggleLike = useCallback(async (): Promise<void> => {
-    if (!current) return
+    const cur = itemsRef.current[indexRef.current]
+    if (!cur) return
     const next = !liked
     setLiked(next)
-    if (next) likedIds.add(current.id)
-    else likedIds.delete(current.id)
+    if (next) likedIds.add(cur.id)
+    else likedIds.delete(cur.id)
     try {
-      if (next) await window.api.likeGif(current.id)
-      else await window.api.unlikeGif(current.id)
+      if (next) await window.api.likeGif(cur.id)
+      else await window.api.unlikeGif(cur.id)
+      writeCache('likedIds', [...likedIds])
+      window.dispatchEvent(
+        new CustomEvent('rgd:like-changed', { detail: { gifId: cur.id, liked: next } })
+      )
     } catch (e) {
       setLiked(!next)
-      if (next) likedIds.delete(current.id)
-      else likedIds.add(current.id)
-      notify((next ? 'Like' : 'Unlike') + ' failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+      if (next) likedIds.delete(cur.id)
+      else likedIds.add(cur.id)
+      notify(
+        (next ? 'Like' : 'Unlike') + ' failed: ' + (e instanceof Error ? e.message : String(e)),
+        'error'
+      )
     }
-  }, [current, liked, notify])
+  }, [liked, notify])
 
-  // Close the player, then navigate — so the destination page is on top.
-  const goCreator = useCallback((): void => {
-    if (!current) return
-    onClose()
-    navigate({ name: 'creator', username: current.username })
-  }, [current, onClose, navigate])
+  // --- keyboard ---------------------------------------------------------------
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      // Never hijack typing (e.g. the "New collection" name field).
+      if (
+        e.target instanceof HTMLElement &&
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) &&
+        (e.target as HTMLInputElement).type !== 'range'
+      ) {
+        return
+      }
+      setIdle(false)
+      switch (e.key) {
+        case 'Escape':
+          e.preventDefault()
+          if (collectionOpen) setCollectionOpen(false)
+          else onClose()
+          break
+        case 'ArrowDown':
+          e.preventDefault()
+          step(1)
+          break
+        case 'ArrowUp':
+          e.preventDefault()
+          step(-1)
+          break
+        case 'ArrowRight':
+          e.preventDefault()
+          seekBy(5)
+          break
+        case 'ArrowLeft':
+          e.preventDefault()
+          seekBy(-5)
+          break
+        case ' ':
+          e.preventDefault()
+          togglePlay()
+          break
+        case 'm':
+        case 'M':
+          setMuted((m) => !m)
+          break
+        case 'l':
+        case 'L':
+          void toggleLike()
+          break
+        case 's':
+        case 'S':
+          void save()
+          break
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, step, seekBy, togglePlay, toggleLike, save, collectionOpen])
 
-  const goTag = useCallback(
-    (tag: string): void => {
-      onClose()
-      navigate({ name: 'tag', tag })
+  // --- wheel: accumulate deliberate travel, one step per gesture -------------
+  const onWheel = useCallback(
+    (e: React.WheelEvent): void => {
+      if (overScrubberRef.current) return
+      setIdle(false)
+      if (stepLockRef.current) return // absorb trackpad inertia during the slide
+      wheelAccRef.current += e.deltaY
+      if (Math.abs(wheelAccRef.current) >= WHEEL_STEP_PX) {
+        const dir = wheelAccRef.current > 0 ? 1 : -1
+        wheelAccRef.current = 0
+        step(dir)
+      }
     },
-    [onClose, navigate]
+    [step]
   )
+
+  // --- idle chrome: fade the overlays while the pointer rests ----------------
+  const wake = useCallback((): void => {
+    setIdle(false)
+    window.clearTimeout(idleTimer.current)
+    idleTimer.current = window.setTimeout(() => {
+      // Keep chrome up while paused or while a menu is open.
+      if (!collectionOpen && playing) setIdle(true)
+    }, IDLE_MS)
+  }, [collectionOpen, playing])
+
+  useEffect(() => {
+    wake()
+    return () => window.clearTimeout(idleTimer.current)
+  }, [wake])
 
   if (!current) {
     return (
@@ -439,108 +569,173 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     )
   }
 
-  const videoSrc = current.urls.hd || current.urls.sd
-  const poster = current.urls.thumbnail || current.urls.poster
   const avatarLetter = (current.username?.[0] ?? '?').toUpperCase()
 
+  // Close the player, then navigate — so the destination page is on top.
+  const goCreator = (): void => {
+    onClose()
+    navigate({ name: 'creator', username: current.username })
+  }
+  const goTag = (tag: string): void => {
+    onClose()
+    navigate({ name: 'tag', tag })
+  }
+
+  // Mount the current slide plus one neighbour each way: the next clip is
+  // already buffering (preload="auto") when the user steps onto it.
+  const first = Math.max(0, index - 1)
+  const slides = items.slice(first, Math.min(items.length, index + 2))
+  const progress = duration > 0 ? Math.min(currentTime / duration, 1) : 0
+
   return (
-    <div className="player" onWheel={onWheel} role="dialog" aria-modal="true" aria-label="Player">
+    <div
+      className={`player ${idle ? 'idle' : ''}`}
+      onWheel={onWheel}
+      onMouseMove={wake}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Player"
+    >
       {/* source chip (top-left) */}
-      <div className="player-chip">
-        ▸ {similar ? 'Similar' : source.label} · {index + 1}/{items.length}
+      <div className="player-chip player-chrome">
+        {similar ? 'Similar' : source.label} — {index + 1} / {items.length}
       </div>
 
       {/* close (top-right) */}
-      <button className="player-close" type="button" onClick={onClose} aria-label="Close player">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M18 6 6 18" />
-          <path d="m6 6 12 12" />
-        </svg>
+      <button
+        className="player-close player-chrome"
+        type="button"
+        onClick={onClose}
+        aria-label="Close player"
+        title="Close (Esc)"
+      >
+        <IconX />
       </button>
 
-      {/* stage */}
+      {/* stage: vertical pager */}
       <div className="player-stage">
-        <div style={stageWrapStyle}>
-          <video
-            key={current.id}
-            ref={videoRef}
-            className="player-video"
-            src={videoSrc}
-            poster={poster}
-            controls={false}
-            autoPlay
-            loop
-            playsInline
-            onClick={togglePlay}
-            onCanPlay={startPlayback}
-            onLoadedMetadata={onLoadedMetadata}
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-            onDurationChange={(e) =>
-              setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)
-            }
-            style={{ cursor: 'pointer' }}
-          />
-
-          {/* mute + like, overlaid on the video's right edge */}
-          <div style={videoRailStyle} onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              style={overlayBtnStyle}
-              onClick={() => setMuted((m) => !m)}
-              aria-label={muted ? 'Unmute' : 'Mute'}
-              aria-pressed={muted}
-              title={muted ? 'Unmute' : 'Mute'}
+        {slides.map((c, s) => {
+          const i = first + s
+          const isCurrent = i === index
+          const src = c.urls.hd || c.urls.sd
+          const poster = c.urls.thumbnail || c.urls.poster
+          return (
+            <div
+              key={c.id}
+              className="player-slide"
+              style={{ transform: `translateY(${(i - index) * 100}%)` }}
+              aria-hidden={!isCurrent}
             >
-              {muted ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={overlayIconStyle}>
-                  <path d="M11 5 6 9H2v6h4l5 4z" />
-                  <path d="m23 9-6 6" />
-                  <path d="m17 9 6 6" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={overlayIconStyle}>
-                  <path d="M11 5 6 9H2v6h4l5 4z" />
-                  <path d="M15.5 8.5a5 5 0 0 1 0 7" />
-                  <path d="M19 5a9 9 0 0 1 0 14" />
-                </svg>
-              )}
-            </button>
-            <button
-              type="button"
-              style={{ ...overlayBtnStyle, ...(liked ? likedOverlayStyle : null) }}
-              onClick={toggleLike}
-              aria-pressed={liked}
-              title={liked ? 'Unlike' : 'Like'}
-            >
-              <svg viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={overlayIconStyle}>
-                <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
-              </svg>
-            </button>
-          </div>
+              <div className="player-wrap">
+                <video
+                  ref={(el) => {
+                    if (el) videoRefs.current.set(c.id, el)
+                    else videoRefs.current.delete(c.id)
+                  }}
+                  className="player-video"
+                  src={src}
+                  poster={poster}
+                  controls={false}
+                  loop
+                  playsInline
+                  muted={!isCurrent || muted}
+                  preload="auto"
+                  autoPlay={isCurrent}
+                  onClick={isCurrent ? togglePlay : undefined}
+                  onCanPlay={isCurrent ? startPlayback : undefined}
+                  onLoadedMetadata={
+                    isCurrent
+                      ? (e) => {
+                          const d = e.currentTarget.duration
+                          if (Number.isFinite(d) && d > 0) setDuration(d)
+                        }
+                      : undefined
+                  }
+                  onPlay={isCurrent ? () => setPlaying(true) : undefined}
+                  onPause={isCurrent ? () => setPlaying(false) : undefined}
+                  onTimeUpdate={
+                    isCurrent ? (e) => setCurrentTime(e.currentTarget.currentTime) : undefined
+                  }
+                />
 
-          {/* full-width timeline pinned to the very bottom of the video */}
-          <input
-            type="range"
-            className="player-seek-bottom"
-            style={bottomSeekStyle}
-            min={0}
-            max={duration || 0}
-            step={0.1}
-            value={Math.min(currentTime, duration || 0)}
-            onChange={onSeek}
-            onClick={(e) => e.stopPropagation()}
-            onWheel={(e) => e.stopPropagation()}
-            onMouseEnter={() => {
-              overScrubberRef.current = true
-            }}
-            onMouseLeave={() => {
-              overScrubberRef.current = false
-            }}
-            aria-label="Seek"
-          />
-        </div>
+                {isCurrent && (
+                  <>
+                    {!playing && (
+                      <div className="player-paused-badge" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    )}
+
+                    {/* mute + like, overlaid on the video's right edge */}
+                    <div className="player-vrail player-chrome" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="player-obtn"
+                        onClick={() => setMuted((m) => !m)}
+                        aria-label={muted ? 'Unmute' : 'Mute'}
+                        aria-pressed={muted}
+                        title={muted ? 'Unmute (M)' : 'Mute (M)'}
+                      >
+                        {muted ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M11 5 6 9H2v6h4l5 4z" />
+                            <path d="m23 9-6 6" />
+                            <path d="m17 9 6 6" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M11 5 6 9H2v6h4l5 4z" />
+                            <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                            <path d="M19 5a9 9 0 0 1 0 14" />
+                          </svg>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className={`player-obtn ${liked ? 'on' : ''}`}
+                        onClick={toggleLike}
+                        aria-pressed={liked}
+                        title={liked ? 'Unlike (L)' : 'Like (L)'}
+                      >
+                        <svg viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8z" />
+                        </svg>
+                      </button>
+                    </div>
+
+                    {/* mono time readout */}
+                    <div className="player-time player-chrome">
+                      {formatDuration(currentTime)} / {formatDuration(duration)}
+                    </div>
+
+                    {/* full-width timeline pinned to the video's bottom edge */}
+                    <input
+                      type="range"
+                      className="scrub"
+                      style={{ ['--p' as string]: String(progress) }}
+                      min={0}
+                      max={duration || 0}
+                      step={0.1}
+                      value={Math.min(currentTime, duration || 0)}
+                      onChange={onSeek}
+                      onClick={(e) => e.stopPropagation()}
+                      onWheel={(e) => e.stopPropagation()}
+                      onMouseEnter={() => {
+                        overScrubberRef.current = true
+                      }}
+                      onMouseLeave={() => {
+                        overScrubberRef.current = false
+                      }}
+                      aria-label="Seek"
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {/* right action rail */}
@@ -557,24 +752,14 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
           </button>
         </div>
 
-        <button className="btn btn-ember player-save" type="button" onClick={save}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 3v12" />
-            <path d="m7 10 5 5 5-5" />
-            <path d="M5 21h14" />
-          </svg>
+        <button className="btn btn-ember player-save" type="button" onClick={save} title="Save (S)">
+          <IconDownload />
           Save
         </button>
 
-        <div style={actionRowStyle}>
-          <button
-            className="btn"
-            type="button"
-            style={actionBtnStyle}
-            onClick={copyLink}
-            title="Copy link"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={actionIconStyle}>
+        <div className="player-actions">
+          <button className="btn" type="button" onClick={copyLink} title="Copy link">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.8 1.7" />
               <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.8-1.7" />
             </svg>
@@ -584,31 +769,25 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
           <button
             className={`btn ${following ? 'on' : ''}`}
             type="button"
-            style={{ ...actionBtnStyle, ...(following ? followingStyle : null) }}
             onClick={toggleFollow}
             aria-pressed={following}
             title={following ? 'Unfollow' : 'Follow'}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={actionIconStyle}>
-              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              {following ? <path d="m17 11 2 2 4-4" /> : <path d="M19 8v6M22 11h-6" />}
-            </svg>
+            <IconUsers />
             {following ? 'Following' : 'Follow'}
           </button>
         </div>
 
         <div style={{ position: 'relative' }}>
           <button
-            className="btn"
+            className="btn player-actions-full"
             type="button"
-            style={{ ...actionBtnStyle, width: '100%' }}
             onClick={() => setCollectionOpen((o) => !o)}
             aria-expanded={collectionOpen}
             aria-haspopup="menu"
             title="Add to collection"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={actionIconStyle}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M4 7h16" />
               <path d="M4 12h16" />
               <path d="M4 17h10" />
@@ -623,13 +802,13 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
 
         <button
           type="button"
-          style={{ ...similarToggleStyle, ...(similar ? similarToggleOnStyle : null) }}
+          className={`switch ${similar ? 'on' : ''}`}
           onClick={toggleSimilar}
           aria-pressed={similar}
           title={similar ? 'Back to the feed' : 'Scroll into gifs similar to this one'}
         >
-          <span style={{ ...similarTrackStyle, ...(similar ? similarTrackOnStyle : null) }} aria-hidden="true">
-            <span style={{ ...similarDotStyle, ...(similar ? similarDotOnStyle : null) }} />
+          <span className="switch-track" aria-hidden="true">
+            <span className="switch-dot" />
           </span>
           {similar ? 'Similar' : 'See similar'}
         </button>
@@ -648,18 +827,18 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
                 className={`btn btn-sm ${nicheVote === 'up' ? 'on' : ''}`}
                 onClick={() => vote('up')}
                 aria-pressed={nicheVote === 'up'}
-                title="Fits"
+                title="Fits this niche"
               >
-                ▲
+                Fits
               </button>
               <button
                 type="button"
                 className={`btn btn-sm ${nicheVote === 'down' ? 'on' : ''}`}
                 onClick={() => vote('down')}
                 aria-pressed={nicheVote === 'down'}
-                title="Doesn't fit"
+                title="Doesn't fit this niche"
               >
-                ▼
+                Off
               </button>
             </div>
           </div>
@@ -682,143 +861,8 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
         )}
       </aside>
 
-      {/* bottom hint */}
-      <div className="player-hint">scroll ↕ for next</div>
+      {/* one-time bottom hint */}
+      {showHint && <div className="player-hint">scroll ↕ · space pauses · esc closes</div>}
     </div>
   )
 }
-
-/* --- inline Midnight Press styles (tokens.css is off-limits for this task) -- */
-
-// Wrapper hugs the video so the right rail + bottom seek anchor to its edges.
-const stageWrapStyle: CSSProperties = {
-  position: 'relative',
-  display: 'inline-flex',
-  maxWidth: '100%'
-}
-
-const videoRailStyle: CSSProperties = {
-  position: 'absolute',
-  right: 12,
-  top: '50%',
-  transform: 'translateY(-50%)',
-  zIndex: 3,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14
-}
-
-const overlayBtnStyle: CSSProperties = {
-  width: 46,
-  height: 46,
-  padding: 0,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'rgba(12, 11, 14, 0.55)',
-  border: '1px solid var(--line2)',
-  borderRadius: '50%',
-  color: 'var(--cream)',
-  cursor: 'pointer',
-  backdropFilter: 'blur(8px)'
-}
-
-const overlayIconStyle: CSSProperties = {
-  width: 20,
-  height: 20
-}
-
-const likedOverlayStyle: CSSProperties = {
-  color: 'var(--ember)',
-  borderColor: 'var(--ember)'
-}
-
-// Thin full-width scrubber flush with the video's bottom edge.
-const bottomSeekStyle: CSSProperties = {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  bottom: 0,
-  width: '100%',
-  height: 6,
-  margin: 0,
-  padding: 0,
-  zIndex: 4,
-  accentColor: 'var(--ember)',
-  cursor: 'pointer',
-  background: 'transparent'
-}
-
-const actionRowStyle: CSSProperties = {
-  display: 'flex',
-  gap: 8
-}
-
-const actionBtnStyle: CSSProperties = {
-  flex: 1,
-  display: 'inline-flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 6,
-  padding: '9px 10px',
-  fontSize: 13
-}
-
-const actionIconStyle: CSSProperties = {
-  width: 15,
-  height: 15,
-  flex: 'none'
-}
-
-const followingStyle: CSSProperties = {
-  color: 'var(--ember)',
-  borderColor: 'var(--ember)'
-}
-
-// Compact switch-style toggle for "See similar".
-const similarToggleStyle: CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 8,
-  alignSelf: 'flex-start',
-  padding: '6px 12px',
-  fontFamily: 'var(--mono)',
-  fontSize: 12,
-  letterSpacing: '0.02em',
-  borderRadius: 999,
-  cursor: 'pointer',
-  background: 'var(--panel)',
-  border: '1px solid var(--line2)',
-  color: 'var(--mut)'
-}
-
-const similarToggleOnStyle: CSSProperties = {
-  background: 'rgba(228, 87, 46, 0.16)',
-  borderColor: 'var(--ember)',
-  color: 'var(--ember)'
-}
-
-const similarTrackStyle: CSSProperties = {
-  position: 'relative',
-  flex: 'none',
-  width: 24,
-  height: 14,
-  borderRadius: 999,
-  background: 'var(--line2)',
-  transition: 'background 120ms ease'
-}
-
-const similarTrackOnStyle: CSSProperties = { background: 'var(--ember)' }
-
-const similarDotStyle: CSSProperties = {
-  position: 'absolute',
-  top: 2,
-  left: 2,
-  width: 10,
-  height: 10,
-  borderRadius: '50%',
-  background: 'var(--cream)',
-  transition: 'transform 120ms ease'
-}
-
-const similarDotOnStyle: CSSProperties = { transform: 'translateX(10px)' }

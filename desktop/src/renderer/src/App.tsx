@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Downloads from './pages/Downloads'
 import SettingsPage from './pages/SettingsPage'
 import ForYou from './pages/ForYou'
@@ -24,6 +24,21 @@ import { NavProvider, useNav } from './context/nav'
 import type { Route } from './context/nav'
 import { PlayerProvider } from './player/PlayerProvider'
 import type { AuthStatus, DownloadTask } from '@shared/types'
+import {
+  IconBookmark,
+  IconChevronLeft,
+  IconChevronRight,
+  IconClock,
+  IconCompass,
+  IconDownload,
+  IconGear,
+  IconHeart,
+  IconImage,
+  IconLogout,
+  IconShapes,
+  IconSparkles,
+  IconUsers
+} from './components/icons'
 
 // Top-level nav routes reachable from the sidebar (the param-less routes).
 type NavName =
@@ -40,11 +55,12 @@ type NavName =
 interface NavItem {
   id: NavName
   label: string
+  icon: (p: React.SVGProps<SVGSVGElement>) => JSX.Element
 }
 
 /**
  * Which top-level nav item should read as active for a given route. Detail
- * routes map back to their parent so the sidebar item stays underlined:
+ * routes map back to their parent so the sidebar item stays highlighted:
  * `collection`→`collections`, `niche`→`niches`, `creator`/`tag`/`search`→`discover`.
  */
 function activeNavName(route: Route): NavName | null {
@@ -64,6 +80,24 @@ function activeNavName(route: Route): NavName | null {
       return route.name
   }
 }
+
+/** Short trail label shown in the topbar for pushed detail routes. */
+function crumbLabel(route: Route): string | null {
+  switch (route.name) {
+    case 'creator':
+      return `@${route.username}`
+    case 'tag':
+      return `#${route.tag}`
+    case 'search':
+      return `“${route.query}”`
+    case 'collection':
+    case 'niche':
+      return route.title
+    default:
+      return null
+  }
+}
+
 interface NavGroup {
   label: string
   items: NavItem[]
@@ -73,20 +107,20 @@ const GROUPS: NavGroup[] = [
   {
     label: 'Feeds',
     items: [
-      { id: 'for-you', label: 'For you' },
-      { id: 'discover', label: 'Discover' },
-      { id: 'following', label: 'Following' },
-      { id: 'niches', label: 'Niches' }
+      { id: 'for-you', label: 'For you', icon: IconSparkles },
+      { id: 'discover', label: 'Discover', icon: IconCompass },
+      { id: 'following', label: 'Following', icon: IconUsers },
+      { id: 'niches', label: 'Niches', icon: IconShapes }
     ]
   },
   {
     label: 'Library',
     items: [
-      { id: 'library', label: 'All media' },
-      { id: 'collections', label: 'Collections' },
-      { id: 'likes', label: 'Likes' },
-      { id: 'downloads', label: 'Downloads' },
-      { id: 'history', label: 'History' }
+      { id: 'library', label: 'All media', icon: IconImage },
+      { id: 'collections', label: 'Collections', icon: IconBookmark },
+      { id: 'likes', label: 'Likes', icon: IconHeart },
+      { id: 'downloads', label: 'Downloads', icon: IconDownload },
+      { id: 'history', label: 'History', icon: IconClock }
     ]
   }
 ]
@@ -137,14 +171,15 @@ function RoutedPage({
   }
 }
 
-/** App shell: sidebar + routed content. Consumes nav/notify contexts. */
+/** App shell: sidebar + topbar + routed content. Consumes nav/notify contexts. */
 function Shell({
   auth,
   activeDownloads,
   onSignIn,
   onSignOut,
   notify,
-  toastItems
+  toastItems,
+  onToastDismiss
 }: {
   auth: AuthStatus
   activeDownloads: number
@@ -152,11 +187,78 @@ function Shell({
   onSignOut: () => void
   notify: (m: string, t?: import('@shared/types').ToastType) => void
   toastItems: ReturnType<typeof useToasts>['items']
+  onToastDismiss: (id: number) => void
 }): JSX.Element {
-  const { route, navigate, back, canBack } = useNav()
+  const { route, navigate, back, forward, canBack, canForward, depth, action } = useNav()
   const avatarLetter = (auth.username?.[0] ?? '?').toUpperCase()
   const [searchTerm, setSearchTerm] = useState('')
+  const [scrolled, setScrolled] = useState(false)
   const activeName = activeNavName(route)
+  const crumb = crumbLabel(route)
+  const routeKey = JSON.stringify(route)
+
+  const contentRef = useRef<HTMLElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  // Scroll offsets per stack depth: restored when walking history, dropped on reset.
+  const scrollMemory = useRef<Map<number, number>>(new Map())
+  const depthRef = useRef(depth)
+  depthRef.current = depth
+
+  // New page → top; back/forward → the offset that entry had when we left it.
+  // Feed pages hydrate their cached content in a passive effect (after this
+  // layout effect), so a deep offset can clamp against a still-short page —
+  // reapply on animation frames until it sticks, bounded to ~1s.
+  useLayoutEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    let raf = 0
+    if (action === 'pop' || action === 'forward') {
+      const want = scrollMemory.current.get(depth) ?? 0
+      el.scrollTop = want
+      scrollMemory.current.set(depth, want)
+      if (want > 0 && Math.abs(el.scrollTop - want) > 4) {
+        let tries = 60
+        const tick = (): void => {
+          const c = contentRef.current
+          if (!c || tries-- <= 0) return
+          if (Math.abs(c.scrollTop - want) <= 4) return
+          c.scrollTop = want
+          scrollMemory.current.set(depth, want)
+          if (Math.abs(c.scrollTop - want) > 4) raf = requestAnimationFrame(tick)
+        }
+        raf = requestAnimationFrame(tick)
+      }
+    } else {
+      if (action === 'reset') scrollMemory.current.clear()
+      // Write the slot explicitly: scrollTop = 0 on an already-unscrolled
+      // container fires no scroll event, which would leave a stale offset from
+      // a previous page at this depth.
+      el.scrollTop = 0
+      scrollMemory.current.set(depth, 0)
+    }
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKey])
+
+  // Ctrl/Cmd+K (or `/` outside a field) jumps to search — but never while a
+  // modal layer (player, confirm dialog) covers the sidebar: focusing the
+  // hidden input would swallow the modal's own keyboard controls.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (document.querySelector('.player, .overlay')) return
+      const inField =
+        e.target instanceof HTMLElement &&
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)
+      if (inField) return
+      if ((e.key === 'k' && (e.ctrlKey || e.metaKey)) || e.key === '/') {
+        e.preventDefault()
+        searchRef.current?.focus()
+        searchRef.current?.select()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div className="app">
@@ -165,20 +267,27 @@ function Shell({
           RedGifs<span className="dot">.</span>
         </div>
 
-        <input
-          className="sidebar-search"
-          type="search"
-          value={searchTerm}
-          placeholder="Search…"
-          aria-label="Search"
-          onChange={(e) => setSearchTerm(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              const q = searchTerm.trim()
-              if (q) navigate({ name: 'search', query: q })
-            }
-          }}
-        />
+        <div className="sidebar-search-wrap">
+          <input
+            ref={searchRef}
+            className="sidebar-search"
+            type="search"
+            value={searchTerm}
+            placeholder="Search…"
+            aria-label="Search"
+            onChange={(e) => setSearchTerm(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const q = searchTerm.trim()
+                if (q) navigate({ name: 'search', query: q })
+              } else if (e.key === 'Escape') {
+                setSearchTerm('')
+                e.currentTarget.blur()
+              }
+            }}
+          />
+          <span className="kbd">ctrl K</span>
+        </div>
 
         {GROUPS.map((group) => (
           <div className="nav-group" key={group.label}>
@@ -186,6 +295,7 @@ function Shell({
             {group.items.map((item) => {
               const isActive = activeName === item.id
               const count = item.id === 'downloads' ? activeDownloads : 0
+              const Icon = item.icon
               return (
                 <button
                   key={item.id}
@@ -193,6 +303,7 @@ function Shell({
                   onClick={() => navigate({ name: item.id })}
                   aria-current={isActive ? 'page' : undefined}
                 >
+                  <Icon className="nav-ic" />
                   <span className="nav-text">{item.label}</span>
                   {count > 0 && <span className="nav-count">{count}</span>}
                 </button>
@@ -204,25 +315,45 @@ function Shell({
         <div className="acct">
           {auth.authenticated ? (
             <>
-              <div className="acct-avatar" aria-hidden="true">{avatarLetter}</div>
               <button
-                className="acct-name btn-ghost"
-                style={{ border: 0, background: 'none', textAlign: 'left', padding: 0, cursor: 'pointer' }}
+                className="acct-chip"
                 title="View account"
                 onClick={() => navigate({ name: 'account' })}
               >
-                {auth.username ? `@${auth.username}` : 'Signed in'}
+                <div className="acct-avatar" aria-hidden="true">{avatarLetter}</div>
+                <div className="acct-name">
+                  {auth.username ? `@${auth.username}` : 'Signed in'}
+                  <div className="acct-sub">Account</div>
+                </div>
               </button>
-              <button className="btn btn-sm" onClick={onSignOut} title="Sign out">
-                Sign out
+              <button
+                className="ibtn"
+                title="Settings"
+                aria-label="Settings"
+                onClick={() => navigate({ name: 'settings' })}
+              >
+                <IconGear />
+              </button>
+              <button className="ibtn" title="Sign out" aria-label="Sign out" onClick={onSignOut}>
+                <IconLogout />
               </button>
             </>
           ) : (
             <>
-              <div className="acct-avatar" aria-hidden="true">·</div>
-              <div className="acct-name">
-                <div className="acct-sub">Not signed in</div>
+              <div className="acct-chip" style={{ cursor: 'default' }}>
+                <div className="acct-avatar" aria-hidden="true">·</div>
+                <div className="acct-name">
+                  <div className="acct-sub">Not signed in</div>
+                </div>
               </div>
+              <button
+                className="ibtn"
+                title="Settings"
+                aria-label="Settings"
+                onClick={() => navigate({ name: 'settings' })}
+              >
+                <IconGear />
+              </button>
               <button className="btn btn-ember btn-sm" onClick={onSignIn}>
                 Sign in
               </button>
@@ -231,21 +362,36 @@ function Shell({
         </div>
       </aside>
 
-      <main className="content">
-        {canBack && (
-          <button className="shell-back btn btn-ghost btn-sm" onClick={back} title="Back">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="m15 18-6-6 6-6" />
-            </svg>
-            Back
+      <main
+        className="content"
+        ref={contentRef}
+        onScroll={(e) => {
+          const top = e.currentTarget.scrollTop
+          scrollMemory.current.set(depthRef.current, top)
+          setScrolled(top > 8)
+        }}
+      >
+        <div className={`topbar ${scrolled ? 'scrolled' : ''}`}>
+          <button className="ibtn" onClick={back} disabled={!canBack} title="Back" aria-label="Back">
+            <IconChevronLeft />
           </button>
-        )}
+          <button
+            className="ibtn"
+            onClick={forward}
+            disabled={!canForward}
+            title="Forward"
+            aria-label="Forward"
+          >
+            <IconChevronRight />
+          </button>
+          {crumb && <span className="topbar-crumb">{crumb}</span>}
+        </div>
         <ErrorBoundary resetKey={route}>
-          <RoutedPage route={route} notify={notify} />
+          <RoutedPage key={routeKey} route={route} notify={notify} />
         </ErrorBoundary>
       </main>
 
-      <Toasts items={toastItems} />
+      <Toasts items={toastItems} onDismiss={onToastDismiss} />
     </div>
   )
 }
@@ -321,6 +467,7 @@ export default function App(): JSX.Element {
                 onSignOut={signOut}
                 notify={toasts.push}
                 toastItems={toasts.items}
+                onToastDismiss={toasts.dismiss}
               />
             </PlayerProvider>
           </NavProvider>

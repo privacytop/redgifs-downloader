@@ -23,6 +23,11 @@
   --danger: #d8563d;
   --radius: 9px;
 
+  /* motion */
+  --t-fast: 120ms;
+  --t-med: 240ms;
+  --ease: cubic-bezier(0.32, 0.72, 0.28, 1);
+
   --serif: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
   --sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
   --mono: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
@@ -50,6 +55,14 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--dim); }
 
 a { color: inherit; text-decoration: none; }
+
+/* Keyboard focus is always visible; pointer focus never rings. */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid rgba(216, 86, 61, 0.75);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 /* --- Editorial kicker: mono, uppercase, wide tracking, dim ------------------ */
 .kicker {
@@ -115,6 +128,50 @@ a { color: inherit; text-decoration: none; }
 
 .btn-sm { padding: 5px 11px; font-size: 12px; border-radius: 7px; }
 
+/* Selected/toggled state for any plain .btn (Follow, niche votes, …). */
+.btn.on {
+  color: var(--ember);
+  border-color: var(--ember);
+  background: rgba(216, 86, 61, 0.08);
+}
+.btn.on:hover { border-color: var(--ember2); color: var(--ember2); }
+
+.btn svg { width: 15px; height: 15px; flex: none; }
+
+/* --- Square icon button (topbar back/forward, sidebar gear, toast ×) -------- */
+.ibtn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--mut);
+  cursor: pointer;
+  transition: color var(--t-fast) ease, background var(--t-fast) ease;
+}
+.ibtn:hover { color: var(--ink); background: rgba(255, 255, 255, 0.05); }
+.ibtn:disabled { opacity: 0.3; cursor: default; }
+.ibtn:disabled:hover { color: var(--mut); background: transparent; }
+.ibtn svg { width: 16px; height: 16px; }
+
+/* --- Keyboard-key chip ------------------------------------------------------ */
+.kbd {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  color: var(--dim);
+  border: 1px solid var(--line2);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 3px 5px;
+  user-select: none;
+}
+
 /* --- Inputs ----------------------------------------------------------------- */
 input, select, textarea {
   font-family: var(--sans);
@@ -177,7 +234,11 @@ input::placeholder { color: var(--dim); }
   cursor: pointer;
   transition: border-color 0.18s ease, transform 0.18s ease;
 }
-.pcard:hover { border-color: var(--line2); transform: translateY(-2px); }
+.pcard:hover {
+  border-color: var(--line2);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.38);
+}
 
 .pcard-media,
 .pcard-poster,
@@ -191,6 +252,19 @@ input::placeholder { color: var(--dim); }
 }
 .pcard-poster { background: var(--line); }
 .pcard-video { z-index: 1; }
+
+/* Invisible full-card "open" hit-area: a real <button>, so the tile itself is
+   no longer a role=button div with nested buttons (invalid ARIA). Sits above
+   the media/scrim, below the download + creator controls. */
+.pcard-open {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
 
 /* bottom gradient scrim + overlaid meta */
 .pcard-scrim {
@@ -313,16 +387,22 @@ input::placeholder { color: var(--dim); }
   max-width: 340px;
 }
 .toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
   background: var(--panel);
   border: 1px solid var(--line2);
   border-left: 2px solid var(--mut);
   border-radius: var(--radius);
-  padding: 11px 14px;
+  padding: 11px 12px 11px 14px;
   font-size: 13px;
   color: var(--ink);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
   animation: toast-in 0.2s ease;
 }
+.toast-msg { flex: 1; min-width: 0; overflow-wrap: break-word; }
+.toast .ibtn { width: 22px; height: 22px; flex: none; margin: -2px -4px -2px 0; }
+.toast .ibtn svg { width: 13px; height: 13px; }
 .toast-success { border-left-color: var(--ok); }
 .toast-error { border-left-color: var(--danger); }
 .toast-warning { border-left-color: var(--ember2); }
@@ -396,6 +476,16 @@ input::placeholder { color: var(--dim); }
 .wordmark .dot { color: var(--ember); }
 
 /* Sidebar search input (under the wordmark). */
+.sidebar-search-wrap { position: relative; }
+.sidebar-search-wrap .kbd {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: opacity var(--t-fast) ease;
+}
+.sidebar-search-wrap:focus-within .kbd { opacity: 0; }
 .sidebar-search {
   width: 100%;
   background: var(--panel);
@@ -443,21 +533,19 @@ input::placeholder { color: var(--dim); }
 }
 .nav-item:hover { color: var(--ink); background: rgba(255, 255, 255, 0.02); }
 
-.nav-item .nav-text {
-  position: relative;
-  padding-bottom: 2px;
+.nav-item .nav-ic {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--dim);
+  transition: color var(--t-fast) ease;
 }
-.nav-item.active { color: var(--ink); }
-.nav-item.active .nav-text::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -1px;
-  height: 1.5px;
-  background: var(--ember);
-  border-radius: 2px;
+.nav-item:hover .nav-ic { color: var(--mut); }
+.nav-item.active {
+  color: var(--cream);
+  background: rgba(255, 255, 255, 0.045);
 }
+.nav-item.active .nav-ic { color: var(--ember); }
 
 .nav-count {
   margin-left: auto;
@@ -477,10 +565,26 @@ input::placeholder { color: var(--dim); }
   margin-top: auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 8px;
+  gap: 4px;
+  padding: 10px 4px 0;
   border-top: 1px solid var(--line);
 }
+/* Clickable identity area of the footer: avatar + name → Account page. */
+.acct-chip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--t-fast) ease;
+}
+.acct-chip:hover { background: rgba(255, 255, 255, 0.03); }
 .acct-avatar {
   width: 30px;
   height: 30px;
@@ -513,8 +617,42 @@ input::placeholder { color: var(--dim); }
 }
 
 /* --- Main content ----------------------------------------------------------- */
-.content { overflow-y: auto; }
-.page { padding: 34px 40px 56px; max-width: 1180px; }
+.content { overflow-y: auto; position: relative; }
+.page { padding: 20px 40px 56px; max-width: 1180px; animation: page-in 200ms var(--ease) both; }
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page { animation: none; }
+}
+
+/* --- Topbar (sticky over the scrolling content) ------------------------------ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 32px;
+  background: rgba(12, 11, 14, 0.82);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--t-fast) ease;
+}
+.topbar.scrolled { border-bottom-color: var(--line); }
+.topbar-crumb {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-left: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* --- Page header ------------------------------------------------------------ */
 .page-header { margin-bottom: 26px; }
@@ -534,10 +672,6 @@ input::placeholder { color: var(--dim); }
   gap: 12px;
 }
 
-/* --- Shell back affordance -------------------------------------------------- */
-.shell-back {
-  margin: 24px 40px -8px;
-}
 
 /* --- Feed grid (FeedGrid) --------------------------------------------------- */
 .feed-grid {
@@ -546,39 +680,34 @@ input::placeholder { color: var(--dim); }
   gap: 12px;
 }
 
-/* Editorial: a real magazine mosaic. A 2×2 hero opens the feed, then recurring
-   full-height "feature" tiles (span 2 rows) keep the big/small rhythm running
-   down the whole column. `dense` backfills the gaps the spans open up. */
-.feed-editorial {
+/* Editorial: a deterministic magazine layout. Fixed three columns; every cycle
+   of six items is one spread — a 2×2 hero (alternating left/right) flanked by
+   two stacked singles, then a row of three. No `dense` backfill: the feed
+   stays in chronological order, and because every grid row always contains a
+   9:16 single, row heights are stable and the hero crops identically to the
+   small tiles (just at double scale). */
+.feed-ed {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* `dense` is required for the right-hero spreads: sparse flow can't backfill
+     the two cells LEFT of a hero placed at column 2, which left holes and let
+     the hero's rows collapse. With this fixed six-item pattern, dense placement
+     puts exactly the next two items into those cells — order stays intact. */
   grid-auto-flow: row dense;
+  gap: 12px;
 }
-.feed-editorial .feed-hero {
-  grid-column: span 2;
-  grid-row: span 2;
-}
-.feed-editorial .feed-tall {
-  grid-row: span 2;
-}
-/* Give the spanning tiles something to fill their doubled row height. */
-.feed-editorial .feed-hero .pcard,
-.feed-editorial .feed-tall .pcard {
+.feed-ed .ed-hero-l { grid-column: 1 / span 2; grid-row: span 2; }
+.feed-ed .ed-hero-r { grid-column: 2 / span 2; grid-row: span 2; }
+.feed-ed .ed-hero-l .pcard,
+.feed-ed .ed-hero-r .pcard {
   aspect-ratio: auto;
   height: 100%;
 }
-@media (max-width: 560px) {
-  .feed-editorial .feed-hero {
-    grid-column: span 1;
-    grid-row: span 1;
-  }
-  .feed-editorial .feed-hero .pcard,
-  .feed-editorial .feed-tall .pcard {
-    aspect-ratio: 9 / 16;
-    height: auto;
-  }
-  .feed-editorial .feed-tall {
-    grid-row: span 1;
-  }
-}
+/* Hero tiles carry hero-scale meta. */
+.feed-ed .ed-hero-l .pcard-user,
+.feed-ed .ed-hero-r .pcard-user { font-size: 18px; }
+.feed-ed .ed-hero-l .pcard-meta,
+.feed-ed .ed-hero-r .pcard-meta { left: 14px; right: 14px; bottom: 13px; }
 
 /* Feed: single centered column, one large portrait tile per row. */
 .feed-column {
@@ -606,6 +735,16 @@ input::placeholder { color: var(--dim); }
   text-transform: uppercase;
   color: var(--mut);
 }
+/* Mid-feed pagination failure: inline row + retry, never a silent stop. */
+.feed-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 0;
+  font-size: 12.5px;
+  color: var(--mut);
+}
 
 /* ===========================================================================
    Immersive player (full-screen overlay)
@@ -618,6 +757,11 @@ input::placeholder { color: var(--dim); }
   display: grid;
   grid-template-columns: 1fr 300px;
   overflow: hidden;
+  animation: player-in 180ms ease both;
+}
+@keyframes player-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .player-empty {
@@ -631,23 +775,166 @@ input::placeholder { color: var(--dim); }
   color: var(--mut);
 }
 
-/* stage: portrait video centered on the dark field */
+/* stage: a vertical pager. Each clip lives in an absolutely-positioned slide
+   translated to (index-current)·100% — stepping slides the deck, TikTok-style,
+   instead of hard-swapping the element. */
 .player-stage {
   grid-column: 1;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+.player-slide {
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
-  min-width: 0;
-  padding: 32px;
+  padding: 28px 28px 34px;
+  transition: transform var(--t-med) var(--ease);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-slide { transition: none; }
+}
+
+/* wrapper hugs the video so overlays anchor to its true edges */
+.player-wrap {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+  max-height: 100%;
 }
 .player-video {
-  max-height: 86vh;
+  max-height: calc(100vh - 62px);
   max-width: 100%;
   height: auto;
   border-radius: var(--radius);
   background: #000;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6);
   object-fit: contain;
+  cursor: pointer;
 }
+
+/* mute + like column overlaid on the video's right edge */
+.player-vrail {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.player-obtn {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 11, 14, 0.55);
+  border: 1px solid var(--line2);
+  border-radius: 50%;
+  color: var(--cream);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  transition: transform var(--t-fast) ease, background var(--t-fast) ease,
+    border-color var(--t-fast) ease, color var(--t-fast) ease;
+}
+.player-obtn:hover { transform: scale(1.07); border-color: var(--mut); }
+.player-obtn.on { color: var(--ember); border-color: var(--ember); }
+.player-obtn svg { width: 20px; height: 20px; }
+
+/* thin scrubber pinned to the video's bottom edge; fill driven by --p (0–1) */
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 16px;
+  margin: 0;
+  padding: 0 2px;
+  z-index: 4;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+}
+.scrub::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    var(--ember) calc(var(--p, 0) * 100%),
+    rgba(255, 255, 255, 0.22) calc(var(--p, 0) * 100%)
+  );
+  transition: height var(--t-fast) ease;
+}
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--ember);
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+.scrub:hover::-webkit-slider-runnable-track { height: 5px; }
+.scrub:hover::-webkit-slider-thumb { opacity: 1; margin-top: -3px; }
+
+/* mono time readout, bottom-left of the video */
+.player-time {
+  position: absolute;
+  left: 12px;
+  bottom: 14px;
+  z-index: 3;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  font-variant-numeric: tabular-nums;
+  color: var(--cream);
+  background: rgba(12, 11, 14, 0.55);
+  border-radius: 6px;
+  padding: 3px 8px;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+/* paused indicator: quiet centered glyph over the video */
+.player-paused-badge {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(12, 11, 14, 0.55);
+  border: 1px solid var(--line2);
+  color: var(--cream);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: player-in 140ms ease both;
+}
+.player-paused-badge svg { width: 26px; height: 26px; margin-left: 3px; }
+
+/* chrome (chip, close, vrail, time) fades while the pointer is idle */
+.player-chrome {
+  transition: opacity 0.25s ease;
+}
+.player.idle .player-chrome {
+  opacity: 0;
+  pointer-events: none;
+}
+.player.idle .player-stage { cursor: none; }
 
 /* source chip (top-left) */
 .player-chip {
@@ -747,6 +1034,11 @@ input::placeholder { color: var(--dim); }
 }
 .player-save svg { width: 16px; height: 16px; }
 
+/* two-up action row (Copy · Follow) + full-width collection button */
+.player-actions { display: flex; gap: 8px; }
+.player-actions .btn { flex: 1; padding: 9px 10px; font-size: 13px; gap: 6px; }
+.player-actions-full { width: 100%; }
+
 .player-like {
   width: 100%;
   padding: 11px 15px;
@@ -822,20 +1114,62 @@ input::placeholder { color: var(--dim); }
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--dim);
+  animation: hint-out 0.5s ease 3.4s both;
+  pointer-events: none;
 }
+@keyframes hint-out {
+  to { opacity: 0; }
+}
+
+/* --- Switch toggle (See similar) --------------------------------------------- */
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 6px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  cursor: pointer;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  color: var(--mut);
+  transition: background var(--t-fast) ease, border-color var(--t-fast) ease,
+    color var(--t-fast) ease;
+}
+.switch:hover { border-color: var(--mut); color: var(--ink); }
+.switch.on {
+  background: rgba(216, 86, 61, 0.14);
+  border-color: var(--ember);
+  color: var(--ember);
+}
+.switch-track {
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--line2);
+  transition: background var(--t-fast) ease;
+}
+.switch.on .switch-track { background: var(--ember); }
+.switch-dot {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--cream);
+  transition: transform var(--t-fast) ease;
+}
+.switch.on .switch-dot { transform: translateX(10px); }
 
 /* ===========================================================================
    Search page
    =========================================================================== */
-.search-section-label {
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--dim);
-  margin-bottom: 12px;
-}
-
 .creator-row {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -947,6 +1281,9 @@ input::placeholder { color: var(--dim); }
 }
 .chip:hover { color: var(--ember); border-color: var(--ember); }
 .chip.on { color: #170a08; background: var(--ember); border-color: var(--ember); }
+/* Read-only chip (labels that are not actions — no pointer, no hover state). */
+.chip.static { cursor: default; }
+.chip.static:hover { color: var(--mut); border-color: var(--line2); background: var(--bg); }
 .chip-x {
   border: 0;
   background: none;
@@ -996,6 +1333,7 @@ input::placeholder { color: var(--dim); }
   color: var(--dim);
   line-height: 1.5;
 }
+.field-hint.warn { color: var(--warn); }
 .field-check { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; cursor: pointer; font-size: 13.5px; color: var(--ink); }
 .field-check input { width: auto; }
 
@@ -1085,7 +1423,9 @@ input::placeholder { color: var(--dim); }
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  transition: border-color var(--t-fast) ease;
 }
+.list-row:hover { border-color: var(--line2); }
 .list-row + .list-row { margin-top: 8px; }
 .list-thumb { width: 60px; height: 38px; flex: none; border-radius: 5px; object-fit: cover; background: var(--line); }
 .list-main { flex: 1; min-width: 0; }
@@ -1109,7 +1449,186 @@ input::placeholder { color: var(--dim); }
   animation: shimmer 1.3s linear infinite;
 }
 .skel-tile { aspect-ratio: 9 / 16; }
+/* 16:9 card skeleton (niche/collection tile grids). */
+.skel-grid.wide { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.skel-tile-wide { aspect-ratio: 16 / 10; }
 @media (prefers-reduced-motion: reduce) {
   .skel { animation: none; }
+}
+
+/* --- Inline creator/user link (History rows, list contexts) ----------------- */
+.link-user {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--cream);
+  cursor: pointer;
+  transition: color var(--t-fast) ease;
+}
+.link-user:hover { color: var(--ember); }
+
+/* --- Page hero (Creator / Account headers) ---------------------------------- */
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.hero-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--line2);
+  color: var(--cream);
+  display: grid;
+  place-items: center;
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 580;
+  overflow: hidden;
+}
+.hero-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.hero-main { min-width: 0; flex: 1; }
+.hero-name {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  color: var(--cream);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hero-sub {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--mut);
+  margin-top: 3px;
+}
+
+/* --- Popover menu (Add to collection) ---------------------------------------- */
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 60;
+  width: 262px;
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  animation: dialog-in 140ms var(--ease) both;
+}
+.menu-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--dim);
+  padding: 2px 6px 8px;
+}
+.menu-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--t-fast) ease;
+}
+.menu-row:hover,
+.menu-row.active { background: rgba(255, 255, 255, 0.045); }
+.menu-row:disabled { opacity: 0.45; cursor: default; }
+.menu-row:disabled:hover { background: none; }
+.menu-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--dim);
+  padding: 10px 6px;
+}
+.menu-sep { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
+
+/* Inside the player rail (overflow-y: auto), an absolutely-anchored panel gets
+   clipped by the rail's scrollport on short windows — pin it to the viewport
+   beside the rail instead so every row stays reachable. */
+.player-rail .menu-panel {
+  position: fixed;
+  top: auto;
+  right: 316px;
+  bottom: 24px;
+  max-height: min(340px, calc(100vh - 48px));
+}
+
+/* --- Status pill (Downloads / History rows) --------------------------------- */
+.pill {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line2);
+  color: var(--mut);
+  white-space: nowrap;
+}
+.pill-ok { color: var(--ok); border-color: rgba(127, 174, 90, 0.4); }
+.pill-err { color: var(--danger); border-color: rgba(216, 86, 61, 0.4); }
+.pill-run { color: var(--ember2); border-color: rgba(239, 138, 109, 0.4); }
+
+/* --- Modal dialog (confirms) ------------------------------------------------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 4, 6, 0.6);
+  backdrop-filter: blur(2px);
+  animation: player-in 140ms ease both;
+}
+.dialog {
+  width: min(420px, calc(100vw - 48px));
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 22px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  animation: dialog-in 160ms var(--ease) both;
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.dialog-title {
+  font-family: var(--serif);
+  font-size: 19px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  color: var(--cream);
+  margin-bottom: 8px;
+}
+.dialog-body {
+  font-size: 13px;
+  color: var(--mut);
+  line-height: 1.55;
+  margin-bottom: 18px;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 

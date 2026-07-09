@@ -11,6 +11,8 @@ interface FeedControlsProps {
   /** Sort — omit on feeds whose backend has no order param. */
   order?: Order
   onOrderChange?: (order: Order) => void
+  /** Sort option override (Search adds Relevance); defaults to shared ORDERS. */
+  orderOptions?: readonly { id: Order; label: string }[]
   /** Video/image filter — omit on single-type feeds. */
   type?: ContentType
   onTypeChange?: (type: ContentType) => void
@@ -30,6 +32,7 @@ export default function FeedControls({
   onModeChange,
   order,
   onOrderChange,
+  orderOptions,
   type,
   onTypeChange,
   verified,
@@ -38,7 +41,9 @@ export default function FeedControls({
   return (
     <div className="controls">
       {type !== undefined && onTypeChange && <TypeFilter value={type} onChange={onTypeChange} />}
-      {order !== undefined && onOrderChange && <SortControl value={order} onChange={onOrderChange} />}
+      {order !== undefined && onOrderChange && (
+        <SortControl value={order} onChange={onOrderChange} options={orderOptions} />
+      )}
       {verified !== undefined && onVerifiedChange && (
         <button
           type="button"

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import FeedControls from '../components/FeedControls'
 import FeedState from '../components/FeedState'
@@ -5,24 +6,48 @@ import SignInGate from '../components/SignInGate'
 import FeedGrid from '../components/FeedGrid'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
+import { useDownload } from '../hooks/useDownload'
 import { useAuthed } from '../hooks/useAuthed'
-import { useNotify } from '../context/notify'
-import { useQuality } from '../context/quality'
 import type { Content } from '@shared/types'
 
 export default function Likes(): JSX.Element {
-  const notify = useNotify()
   const authed = useAuthed()
-  const { quality } = useQuality()
+  const download = useDownload()
   const [mode, setMode] = useViewMode('likes', 'grid')
 
   const feed = usePlayableFeed((p) => window.api.getLikes(p), 'Likes', [authed])
 
-  const dl = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + e.message, 'error'))
+  // Mirror the player's like toggles without a refetch: the likes feed is
+  // eventually consistent, so an immediate reload can still return a just
+  // un-liked gif — hide/restore it locally instead (same event wiring
+  // CollectionDetail uses for 'rgd:collection-changed').
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    const onLike = (e: Event): void => {
+      const d = (e as CustomEvent<{ gifId?: string; liked?: boolean }>).detail
+      const gifId = d?.gifId
+      if (!gifId) return
+      const unliked = d?.liked === false
+      setHidden((prev) => {
+        const next = new Set(prev)
+        if (unliked) next.add(gifId)
+        else next.delete(gifId)
+        return next
+      })
+    }
+    window.addEventListener('rgd:like-changed', onLike)
+    return () => window.removeEventListener('rgd:like-changed', onLike)
+  }, [])
+
+  const items = feed.contents.filter((c) => !hidden.has(c.id))
+
+  // The player paginates the unfiltered feed list, so map the grid's index in
+  // the filtered view back to the item's position in feed.contents.
+  const open = (c: Content, _index: number): void => {
+    feed.openAt(
+      c,
+      feed.contents.findIndex((x) => x.id === c.id)
+    )
   }
 
   if (authed === false) {
@@ -48,19 +73,21 @@ export default function Likes(): JSX.Element {
       <FeedState
         loading={feed.loading}
         error={feed.error}
-        isEmpty={feed.contents.length === 0}
+        isEmpty={items.length === 0}
         emptyMessage="Nothing here yet"
         emptyHint="Gifs you like on RedGifs will show up here."
         onRetry={feed.reload}
       />
       <FeedGrid
-        items={feed.contents}
+        items={items}
         mode={mode}
-        onOpen={feed.openAt}
-        onDownload={dl}
+        onOpen={open}
+        onDownload={download}
         onEndReached={feed.loadMore}
         hasMore={feed.hasMore}
         loading={feed.loading}
+        error={feed.error}
+        onRetry={feed.loadMore}
       />
     </div>
   )

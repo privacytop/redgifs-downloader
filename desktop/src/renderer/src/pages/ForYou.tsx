@@ -1,15 +1,14 @@
 import { useState } from 'react'
-import type { Content } from '@shared/types'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
 import QualityToggle from '../components/QualityToggle'
 import FeedGrid from '../components/FeedGrid'
 import FeedState from '../components/FeedState'
-import SignInGate from '../components/SignInGate'
+import EmptyState from '../components/EmptyState'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
+import { useDownload } from '../hooks/useDownload'
 import { useNotify } from '../context/notify'
-import { useQuality } from '../context/quality'
 import { useAuthed } from '../hooks/useAuthed'
 
 type Tab = 'for-you' | 'trending'
@@ -20,23 +19,25 @@ type Tab = 'for-you' | 'trending'
  */
 export default function ForYou(): JSX.Element {
   const notify = useNotify()
-  const { quality } = useQuality()
   const [mode, setMode] = useViewMode('for-you', 'grid')
   const authed = useAuthed()
   const [tab, setTab] = useState<Tab>('for-you')
+  const [signingIn, setSigningIn] = useState(false)
+  const dl = useDownload()
 
   const feed = usePlayableFeed(
-    (p) => (tab === 'trending' ? window.api.getTrending(p) : window.api.getForYou(p)),
+    (p) => {
+      // The personal feed is a guaranteed 401 while signed out (or still
+      // resolving) — resolve empty instead of calling the API from behind the
+      // sign-in gate. `authed` is in the deps, so signing in refetches.
+      if (tab === 'for-you' && !authed) {
+        return Promise.resolve({ contents: [], page: 1, pages: 1, total: 0 })
+      }
+      return tab === 'trending' ? window.api.getTrending(p) : window.api.getForYou(p)
+    },
     tab === 'trending' ? 'Trending' : 'For you',
     [tab, authed]
   )
-
-  const dl = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + e.message, 'error'))
-  }
 
   const tabs = (
     <div className="seg" role="group" aria-label="Feed">
@@ -78,21 +79,37 @@ export default function ForYou(): JSX.Element {
       />
 
       {gated ? (
-        <>
-          <SignInGate
-            message="Sign in for your personal feed"
-            hint="Or browse Trending — no account needed."
-          />
-          <div className="empty">
-            <button className="btn" type="button" onClick={() => setTab('trending')}>
-              Browse Trending
-            </button>
-          </div>
-        </>
+        // One gate, two ways out: sign in, or hop to the public feed. Inlined
+        // (rather than SignInGate) because the gate needs a second action.
+        <EmptyState
+          message="Sign in for your personal feed"
+          hint="Or browse Trending — no account needed."
+          action={
+            <div className="controls">
+              <button
+                className="btn btn-ember"
+                type="button"
+                disabled={signingIn}
+                onClick={() => {
+                  setSigningIn(true)
+                  window.api
+                    .login()
+                    .catch((e) => notify('Sign-in failed: ' + (e as Error).message, 'error'))
+                    .finally(() => setSigningIn(false))
+                }}
+              >
+                Sign in
+              </button>
+              <button className="btn" type="button" onClick={() => setTab('trending')}>
+                Browse Trending
+              </button>
+            </div>
+          }
+        />
       ) : (
         <>
           <FeedState
-            loading={feed.loading}
+            loading={feed.loading || (tab === 'for-you' && authed === null)}
             error={feed.error}
             isEmpty={feed.contents.length === 0}
             emptyMessage="Nothing here yet"
@@ -107,6 +124,8 @@ export default function ForYou(): JSX.Element {
             onEndReached={feed.loadMore}
             hasMore={feed.hasMore}
             loading={feed.loading}
+            error={feed.error}
+            onRetry={feed.loadMore}
           />
         </>
       )}

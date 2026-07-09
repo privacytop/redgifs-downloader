@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import FeedControls from '../components/FeedControls'
 import FeedGrid from '../components/FeedGrid'
@@ -6,10 +6,10 @@ import FeedState from '../components/FeedState'
 import SignInGate from '../components/SignInGate'
 import { usePlayableFeed } from '../hooks/usePlayableFeed'
 import { useViewMode } from '../hooks/useViewMode'
+import { useDownload } from '../hooks/useDownload'
 import { useAuthed } from '../hooks/useAuthed'
 import { useNotify } from '../context/notify'
 import { useQuality } from '../context/quality'
-import type { Content } from '@shared/types'
 
 /** A single collection's contents, with a "Download all" action. */
 export default function CollectionDetail({
@@ -22,6 +22,7 @@ export default function CollectionDetail({
   const notify = useNotify()
   const authed = useAuthed()
   const { quality } = useQuality()
+  const download = useDownload()
   const [mode, setMode] = useViewMode('collection', 'grid')
   const feed = usePlayableFeed((p) => window.api.getCollectionContent(id, p), title, [id])
 
@@ -36,18 +37,17 @@ export default function CollectionDetail({
     return () => window.removeEventListener('rgd:collection-changed', onChange)
   }, [id, reload])
 
-  const dl = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
-  }
-
+  // "Download all" tracks only its own queueing promise — tying it to
+  // feed.loading made the button flicker-disable on every pagination fetch.
+  const [queuing, setQueuing] = useState(false)
   const downloadAll = (): void => {
+    if (queuing) return
+    setQueuing(true)
     window.api
       .startDownload({ type: 'collection', collectionId: id, quality })
       .then(() => notify('Downloading collection · ' + title, 'success'))
       .catch((e) => notify('Download failed: ' + (e as Error).message, 'error'))
+      .finally(() => setQueuing(false))
   }
 
   if (authed === false) {
@@ -71,9 +71,9 @@ export default function CollectionDetail({
             <button
               className="btn btn-ember btn-sm"
               onClick={downloadAll}
-              disabled={feed.loading || feed.contents.length === 0}
+              disabled={queuing || feed.contents.length === 0}
             >
-              Download all
+              {queuing ? 'Queuing…' : 'Download all'}
             </button>
           </>
         }
@@ -92,10 +92,12 @@ export default function CollectionDetail({
         items={feed.contents}
         mode={mode}
         onOpen={feed.openAt}
-        onDownload={dl}
+        onDownload={download}
         onEndReached={feed.loadMore}
         hasMore={feed.hasMore}
         loading={feed.loading}
+        error={feed.error}
+        onRetry={feed.loadMore}
       />
     </div>
   )

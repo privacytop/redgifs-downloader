@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Content } from '@shared/types'
 import { useNav } from '../context/nav'
 import { captureFrame, useThumbnailMode } from '../hooks/useThumbnailMode'
+import { formatDuration, formatViews } from '../lib/format'
 
 interface MediaCardProps {
   content: Content
@@ -11,19 +12,12 @@ interface MediaCardProps {
   badge?: string
 }
 
-/** Compact number formatter for view counts: 1234 → 1.2K, 3400000 → 3.4M. */
-function formatViews(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return '0'
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`
-  return String(n)
-}
-
 /**
  * Portrait 9:16 media tile for a piece of `Content`.
- * Shows the thumbnail poster; on hover, lazily plays a muted-looping preview
- * (prefers a `silent` clip, falls back to `sd`). Clicking opens; the top-right
- * button downloads. Video only mounts/plays while hovered — cheap when idle.
+ * Shows the thumbnail poster; on hover or keyboard focus, lazily plays a
+ * muted-looping preview (prefers a `silent` clip, falls back to `sd`). An
+ * invisible full-card button opens the player; the top-right button downloads.
+ * Video only mounts/plays while hovered/focused — cheap when idle.
  */
 export default function MediaCard({ content, onOpen, onDownload, badge }: MediaCardProps): JSX.Element {
   const { navigate } = useNav()
@@ -33,11 +27,7 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
 
   const urls = content.urls
   const thumbnail = urls.thumbnail || urls.poster
-  // `silent` may be added to ContentUrls later (owned by another agent); read it
-  // defensively without assuming the field exists on the shared type.
-  const previewSrc =
-    (urls as Record<string, string | undefined>).silent || urls.sd || urls.hd
-  const frameSrc = urls.silent || urls.sd || urls.hd
+  const previewSrc = urls.silent || urls.sd || urls.hd
 
   // Poster actually shown: falls back to the API thumbnail until (or unless) a
   // captured video frame resolves.
@@ -50,9 +40,9 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
       setCaptured(null)
       return
     }
-    if (!frameSrc) return
+    if (!previewSrc) return
     let alive = true
-    captureFrame(frameSrc, thumbMode)
+    captureFrame(previewSrc, thumbMode)
       .then((data) => {
         if (alive && data) setCaptured(data)
       })
@@ -62,14 +52,14 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
     return () => {
       alive = false
     }
-  }, [thumbMode, frameSrc])
+  }, [thumbMode, previewSrc])
 
   // `auto`: probe the thumbnail's luminance on a SEPARATE cross-origin image (so
   // the visible poster never needs crossorigin and can't break on a missing CORS
   // header). If it reads near-black, swap in a mid-clip frame. Best-effort: any
   // CORS/taint/decode failure just keeps the thumbnail.
   useEffect(() => {
-    if (thumbMode !== 'auto' || captured || !thumbnail || !frameSrc) return
+    if (thumbMode !== 'auto' || captured || !thumbnail || !previewSrc) return
     let alive = true
     const probe = new Image()
     probe.crossOrigin = 'anonymous'
@@ -91,7 +81,7 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
           sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]
         }
         if (sum / px < 18) {
-          captureFrame(frameSrc, 'middle').then((frame) => {
+          captureFrame(previewSrc, 'middle').then((frame) => {
             if (alive && frame) setCaptured(frame)
           }).catch(() => {})
         }
@@ -103,7 +93,7 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
     return () => {
       alive = false
     }
-  }, [thumbMode, thumbnail, frameSrc, captured])
+  }, [thumbMode, thumbnail, previewSrc, captured])
 
   function enter(): void {
     setHover(true)
@@ -124,14 +114,11 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
       className="pcard"
       onMouseEnter={enter}
       onMouseLeave={leave}
-      onClick={() => onOpen(content)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          onOpen(content)
-        }
+      onFocus={enter}
+      onBlur={(e) => {
+        // focus-within: only stop the preview when focus leaves the whole card,
+        // not when it hops between the card's own buttons.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) leave()
       }}
     >
       {poster && (
@@ -163,13 +150,17 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
 
       <button
         type="button"
+        className="pcard-open"
+        aria-label={'Play ' + (content.title || '@' + content.username)}
+        onClick={() => onOpen(content)}
+      />
+
+      <button
+        type="button"
         className="pcard-dl"
         title="Download"
         aria-label={`Download ${content.username ? '@' + content.username : 'clip'}`}
-        onClick={(e) => {
-          e.stopPropagation()
-          onDownload(content)
-        }}
+        onClick={() => onDownload(content)}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M12 3v12" />
@@ -183,14 +174,16 @@ export default function MediaCard({ content, onOpen, onDownload, badge }: MediaC
           type="button"
           className="pcard-user"
           title={`View @${content.username}`}
-          onClick={(e) => {
-            e.stopPropagation()
-            navigate({ name: 'creator', username: content.username })
-          }}
+          onClick={() => navigate({ name: 'creator', username: content.username })}
         >
           @{content.username}
         </button>
-        <span className="pcard-views">{formatViews(content.views)} views</span>
+        <span className="pcard-views">
+          {formatViews(content.views)} views
+          {Number.isFinite(content.duration) && content.duration > 0
+            ? ' · ' + formatDuration(content.duration)
+            : ''}
+        </span>
       </div>
     </div>
   )

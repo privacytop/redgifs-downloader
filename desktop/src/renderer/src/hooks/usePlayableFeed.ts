@@ -31,7 +31,16 @@ export function usePlayableFeed(
 ): PlayableFeed {
   const player = usePlayer()
   const { isBlocked } = useBlockedTags()
-  const [contents, setContents] = useState<Content[]>([])
+  // Cache key for page 1 of this feed+params (stale-while-revalidate).
+  const cacheKey = `feed:${label}:${JSON.stringify(deps)}`
+  const cacheKeyRef = useRef(cacheKey)
+  cacheKeyRef.current = cacheKey
+  // Seed from cache SYNCHRONOUSLY: the shell's scroll restore runs in a layout
+  // effect on back/forward, and content that only appears in a passive effect
+  // would clamp the restored offset to ~0 on every history navigation.
+  const [contents, setContents] = useState<Content[]>(
+    () => readCache<Content[]>(cacheKey) ?? []
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pageRef = useRef(0)
@@ -41,10 +50,6 @@ export function usePlayableFeed(
   // Guard concurrency via a ref (not the `loading` state) so it can't go stale
   // in closures or get stuck `true` when a run is superseded by a reset.
   const loadingRef = useRef(false)
-  // Cache key for page 1 of this feed+params (stale-while-revalidate).
-  const cacheKey = `feed:${label}:${JSON.stringify(deps)}`
-  const cacheKeyRef = useRef(cacheKey)
-  cacheKeyRef.current = cacheKey
 
   const loadNext = useCallback(async (): Promise<Content[]> => {
     if (loadingRef.current) return []

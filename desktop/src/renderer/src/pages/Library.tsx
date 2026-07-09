@@ -6,10 +6,10 @@ import FeedGrid from '../components/FeedGrid'
 import EmptyState from '../components/EmptyState'
 import FeedState from '../components/FeedState'
 import { useViewMode } from '../hooks/useViewMode'
+import { useDownload } from '../hooks/useDownload'
 import { usePlayer } from '../player/PlayerProvider'
 import { useBlockedTags } from '../context/blockedTags'
 import { useNotify } from '../context/notify'
-import { useQuality } from '../context/quality'
 import { readCache, writeCache } from '../lib/cache'
 import type { Collection, Content, LibraryProgress } from '@shared/types'
 
@@ -42,7 +42,7 @@ export default function Library(): JSX.Element {
   const notify = useNotify()
   const player = usePlayer()
   const { isBlocked } = useBlockedTags()
-  const { quality } = useQuality()
+  const download = useDownload()
   const [mode, setMode] = useViewMode('library', 'grid')
 
   const [collections, setCollections] = useState<Collection[]>(
@@ -95,9 +95,11 @@ export default function Library(): JSX.Element {
 
   useEffect(() => reload(), [reload])
 
-  // Live progress while a reindex runs.
+  // Live progress while a reindex runs. Once a run finishes the readout must
+  // hand back to the live result count — holding the final "Indexed N" line
+  // forever would mask every later filter/search change.
   useEffect(() => {
-    return window.api.on('evt:library:progress', (p) => setProgress(p))
+    return window.api.on('evt:library:progress', (p) => setProgress(p.running ? p : null))
   }, [])
 
   const running = progress?.running ?? false
@@ -115,7 +117,8 @@ export default function Library(): JSX.Element {
     window.api
       .indexLibrary()
       .then((final) => {
-        setProgress(final)
+        // The toast carries the summary; the readout returns to the count.
+        setProgress(null)
         notify(`Indexed ${final.gifsCached} gifs`, 'success')
         reload()
       })
@@ -149,15 +152,11 @@ export default function Library(): JSX.Element {
     player.open({ items: results, index, label: 'Library', loadMore: async () => [] })
   }
 
-  const download = (c: Content): void => {
-    window.api
-      .downloadContents([c], c.username, quality)
-      .then(() => notify('Saving @' + c.username, 'success'))
-      .catch((e) => notify('Download failed: ' + e.message, 'error'))
-  }
-
-  // Genuinely unindexed: nothing cached at all, no error, done loading.
-  const unindexed = !loading && !error && all.length === 0
+  // Genuinely unindexed: the unfiltered "all sources" view has nothing cached.
+  // A zero under a narrower source or a query must read as "No matches" — not
+  // re-run the onboarding pitch at someone whose library is already indexed.
+  const unindexed =
+    !loading && !error && all.length === 0 && source === 'all' && query.trim() === ''
 
   return (
     <div className="page">
@@ -177,10 +176,16 @@ export default function Library(): JSX.Element {
         <input
           className="field-search"
           placeholder="Search cached gifs — name, creator, tag…"
+          aria-label="Search cached gifs"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select className="select" value={source} onChange={(e) => setSource(e.target.value)}>
+        <select
+          className="select"
+          aria-label="Source"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        >
           <option value="all">All sources</option>
           <option value="liked">Liked</option>
           {collections.map((c) => (
@@ -191,6 +196,7 @@ export default function Library(): JSX.Element {
         </select>
         <select
           className="select"
+          aria-label="Sort by"
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
         >
@@ -204,10 +210,8 @@ export default function Library(): JSX.Element {
           {running ? 'Indexing…' : 'Reindex'}
         </button>
         <span className="readout">
-          {progress
-            ? progress.running
-              ? `${progress.phase === 'liked' ? 'Liked videos' : `Collections ${progress.collectionsDone}/${progress.collectionsTotal}`} · ${progress.gifsCached} cached${progress.currentLabel ? ` · ${progress.currentLabel}` : ''}`
-              : `Indexed ${progress.gifsCached} gifs`
+          {progress?.running
+            ? `${progress.phase === 'liked' ? 'Liked videos' : `Collections ${progress.collectionsDone}/${progress.collectionsTotal}`} · ${progress.gifsCached} cached${progress.currentLabel ? ` · ${progress.currentLabel}` : ''}`
             : `${results.length} ${results.length === 1 ? 'result' : 'results'}${source !== 'all' ? ' in this source' : ''}`}
         </span>
       </div>

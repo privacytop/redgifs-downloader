@@ -29,7 +29,7 @@ const TABS: TabDef[] = [
 
 function NicheCard({ niche, onOpen }: { niche: Niche; onOpen: (n: Niche) => void }): JSX.Element {
   return (
-    <button className="tile" onClick={() => onOpen(niche)}>
+    <button type="button" className="tile" onClick={() => onOpen(niche)}>
       {niche.thumbnail && (
         <div className="tile-cover ar-16-9">
           <img src={niche.thumbnail} alt="" loading="lazy" />
@@ -51,7 +51,7 @@ function CategoryCard({
   onOpen: (name: string) => void
 }): JSX.Element {
   return (
-    <button className="tile" onClick={() => onOpen(name)}>
+    <button type="button" className="tile" onClick={() => onOpen(name)}>
       <div className="tile-title">{name}</div>
     </button>
   )
@@ -66,7 +66,7 @@ export default function Niches(): JSX.Element {
   const gated = active.needsAuth && !authed
 
   // Cache-first per tab: show the last-known list instantly, then revalidate.
-  const { data, loading, error } = useCachedResource<Niche[] | string[]>(
+  const { data, loading, error, refresh } = useCachedResource<Niche[] | string[]>(
     `niches:${tab}`,
     () => (gated ? Promise.resolve([] as Niche[]) : active.fetch()),
     [tab, authed]
@@ -84,9 +84,15 @@ export default function Niches(): JSX.Element {
         kickerIndex={4}
         title="Niches"
         right={
-          <div className="seg">
+          <div className="seg" role="group" aria-label="Niche tabs">
             {TABS.map((t) => (
-              <button key={t.key} className={t.key === tab ? 'on' : ''} onClick={() => setTab(t.key)}>
+              <button
+                key={t.key}
+                type="button"
+                className={t.key === tab ? 'on' : ''}
+                aria-pressed={t.key === tab}
+                onClick={() => setTab(t.key)}
+              >
                 {t.label}
               </button>
             ))}
@@ -106,8 +112,18 @@ export default function Niches(): JSX.Element {
             error={error}
             isEmpty={rows.length === 0}
             emptyMessage="No niches here yet"
-            skeleton="grid"
+            onRetry={refresh}
+            skeleton="none"
           />
+          {/* FeedState's built-in skeleton is 9:16 portrait; these are 16:9
+              tiles, so paint the wide variant here instead. */}
+          {loading && rows.length === 0 && !error && (
+            <div className="skel-grid wide" aria-busy="true" aria-label="Loading">
+              {Array.from({ length: 12 }, (_, i) => (
+                <div key={i} className="skel skel-tile-wide" />
+              ))}
+            </div>
+          )}
           <div className="tile-grid">
             {isCategories
               ? (rows as string[])
