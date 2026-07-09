@@ -7,8 +7,11 @@ import { useBlockedTags } from '../context/blockedTags'
 import { useQuality } from '../context/quality'
 import { formatViews, formatDuration } from '../lib/format'
 import { readCache, writeCache } from '../lib/cache'
+import { FOLLOW_EVENT, FOLLOWS_RELOADED_EVENT, isFollowing, loadFollows, setFollow } from '../lib/follows'
+import type { FollowChange } from '../lib/follows'
 import CollectionMenu from './CollectionMenu'
-import { IconDownload, IconUsers, IconX } from '../components/icons'
+import { IconChevronDown, IconDownload, IconUsers, IconX } from '../components/icons'
+import type { Quality } from '@shared/types'
 
 interface ImmersivePlayerProps {
   source: PlaySource
@@ -27,22 +30,6 @@ const IDLE_MS = 2500
 // localStorage keys: mute preference; one-time "scroll for next" hint.
 const MUTE_KEY = 'player:muted'
 const HINT_KEY = 'player:hinted'
-
-/**
- * Cached fetch of the accounts the signed-in user follows. Loaded once per app
- * run (module-level promise) so paging between clips doesn't refetch. Resolves
- * to a lowercased Set; degrades to an empty Set when unauthed / on error.
- */
-let followsPromise: Promise<Set<string>> | null = null
-function loadFollows(): Promise<Set<string>> {
-  if (!followsPromise) {
-    followsPromise = window.api
-      .getFollows()
-      .then((names) => new Set(names.map((n) => n.toLowerCase())))
-      .catch(() => new Set<string>())
-  }
-  return followsPromise
-}
 
 // Set of gif ids the user has liked, so the heart reflects both in-session
 // likes and ones from the past (feeds don't return per-gif like state). Seeded
@@ -98,10 +85,10 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
 
-  // --- follow state --------------------------------------------------------
-  const [follows, setFollows] = useState<Set<string> | null>(null)
+  // --- follow state (shared lib/follows cache) ------------------------------
   const [following, setFollowing] = useState(false)
   const [collectionOpen, setCollectionOpen] = useState(false)
+  const [saveOpen, setSaveOpen] = useState(false)
 
   // --- idle chrome ----------------------------------------------------------
   const [idle, setIdle] = useState(false)
@@ -126,6 +113,7 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
 
   // One <video> per mounted slide, keyed by content id.
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
+  const saveSplitRef = useRef<HTMLDivElement>(null)
   const wheelAccRef = useRef(0)
   const stepLockRef = useRef(false)
   const loadingRef = useRef(false)
@@ -284,6 +272,7 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     setCurrentTime(0)
     setDuration(current && Number.isFinite(current.duration) ? current.duration : 0)
     setCollectionOpen(false)
+    setSaveOpen(false)
     // The previous slide's scrubber unmounts without a mouseleave — clear the
     // wheel suppression or navigation could stay dead until the next hover.
     overScrubberRef.current = false
@@ -301,14 +290,30 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id])
 
-  // --- load the follows set once, then reflect the current creator ---------
+  // --- load the follows set once, then track changes from anywhere ---------
   useEffect(() => {
     let alive = true
-    void loadFollows().then((set) => {
-      if (alive) setFollows(set)
+    void loadFollows().then(() => {
+      if (alive && currentIdRef.current) {
+        const cur = itemsRef.current[indexRef.current]
+        if (cur) setFollowing(isFollowing(cur.username))
+      }
     })
+    const onChange = (e: Event): void => {
+      const { username, following } = (e as CustomEvent<FollowChange>).detail
+      const cur = itemsRef.current[indexRef.current]
+      if (cur && cur.username.toLowerCase() === username.toLowerCase()) setFollowing(following)
+    }
+    const onReloaded = (): void => {
+      const cur = itemsRef.current[indexRef.current]
+      if (cur) setFollowing(isFollowing(cur.username))
+    }
+    window.addEventListener(FOLLOW_EVENT, onChange)
+    window.addEventListener(FOLLOWS_RELOADED_EVENT, onReloaded)
     return () => {
       alive = false
+      window.removeEventListener(FOLLOW_EVENT, onChange)
+      window.removeEventListener(FOLLOWS_RELOADED_EVENT, onReloaded)
     }
   }, [])
 
@@ -325,9 +330,9 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   }, [])
 
   useEffect(() => {
-    if (!follows || !current) return
-    setFollowing(follows.has(current.username.toLowerCase()))
-  }, [follows, current])
+    if (!current) return
+    setFollowing(isFollowing(current.username))
+  }, [current])
 
   // Pause every element on unmount. Do NOT strip src / call load() in
   // cleanups: under React StrictMode's dev double-mount that blanked the first
@@ -381,16 +386,23 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     [currentVideo]
   )
 
-  const save = useCallback(async (): Promise<void> => {
-    const cur = itemsRef.current[indexRef.current]
-    if (!cur) return
-    try {
-      await window.api.downloadContents([cur], cur.username, quality)
-      notify('Saving @' + cur.username, 'success')
-    } catch (e) {
-      notify('Save failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
-    }
-  }, [notify, quality])
+  // Save the current clip — at the app default quality, or an explicit
+  // override from the split-button menu.
+  const save = useCallback(
+    async (q?: Quality): Promise<void> => {
+      const cur = itemsRef.current[indexRef.current]
+      if (!cur) return
+      const chosen = q ?? quality
+      setSaveOpen(false)
+      try {
+        await window.api.downloadContents([cur], cur.username, chosen)
+        notify(`Download queued (${chosen.toUpperCase()}) — @${cur.username}`, 'success')
+      } catch (e) {
+        notify('Save failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+      }
+    },
+    [notify, quality]
+  )
 
   const copyLink = useCallback(async (): Promise<void> => {
     const cur = itemsRef.current[indexRef.current]
@@ -403,30 +415,14 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     }
   }, [notify])
 
-  // Optimistic follow toggle: flip immediately, revert + notify on failure,
-  // and keep the shared follows Set in sync so paging reflects the change.
+  // Optimistic follow toggle via the shared cache — the FOLLOW_EVENT listener
+  // above (and creator cards elsewhere) reflect the flip; lib reverts on error.
   const toggleFollow = useCallback(async (): Promise<void> => {
     if (!current) return
-    const username = current.username
     const next = !following
-    setFollowing(next)
-    setFollows((prev) => {
-      const set = new Set(prev ?? [])
-      if (next) set.add(username.toLowerCase())
-      else set.delete(username.toLowerCase())
-      return set
-    })
     try {
-      if (next) await window.api.followUser(username)
-      else await window.api.unfollowUser(username)
+      await setFollow(current.username, next)
     } catch (e) {
-      setFollowing(!next)
-      setFollows((prev) => {
-        const set = new Set(prev ?? [])
-        if (next) set.delete(username.toLowerCase())
-        else set.add(username.toLowerCase())
-        return set
-      })
       notify(
         (next ? 'Follow' : 'Unfollow') + ' failed: ' + (e instanceof Error ? e.message : String(e)),
         'error'
@@ -489,7 +485,8 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
       switch (e.key) {
         case 'Escape':
           e.preventDefault()
-          if (collectionOpen) setCollectionOpen(false)
+          if (saveOpen) setSaveOpen(false)
+          else if (collectionOpen) setCollectionOpen(false)
           else onClose()
           break
         case 'ArrowDown':
@@ -528,7 +525,7 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, step, seekBy, togglePlay, toggleLike, save, collectionOpen])
+  }, [onClose, step, seekBy, togglePlay, toggleLike, save, collectionOpen, saveOpen])
 
   // --- wheel: accumulate deliberate travel, one step per gesture -------------
   const onWheel = useCallback(
@@ -545,6 +542,18 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
     },
     [step]
   )
+
+  // Outside clicks close the save-quality menu.
+  useEffect(() => {
+    if (!saveOpen) return
+    const onDoc = (e: MouseEvent): void => {
+      if (saveSplitRef.current && !saveSplitRef.current.contains(e.target as Node)) {
+        setSaveOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDoc, true)
+    return () => document.removeEventListener('mousedown', onDoc, true)
+  }, [saveOpen])
 
   // --- idle chrome: fade the overlays while the pointer rests ----------------
   const wake = useCallback((): void => {
@@ -752,10 +761,40 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
           </button>
         </div>
 
-        <button className="btn btn-ember player-save" type="button" onClick={save} title="Save (S)">
-          <IconDownload />
-          Save
-        </button>
+        <div className="save-split" ref={saveSplitRef}>
+          <button
+            className="btn btn-ember player-save save-main"
+            type="button"
+            onClick={() => void save()}
+            title="Save (S)"
+          >
+            <IconDownload />
+            Save {quality.toUpperCase()}
+          </button>
+          <button
+            className="btn btn-ember save-caret"
+            type="button"
+            aria-haspopup="menu"
+            aria-expanded={saveOpen}
+            aria-label="Save quality options"
+            title="Pick quality for this save"
+            onClick={() => setSaveOpen((o) => !o)}
+          >
+            <IconChevronDown />
+          </button>
+          {saveOpen && (
+            <div className="menu-panel" role="menu" aria-label="Save quality">
+              <button type="button" role="menuitem" className="menu-row" onClick={() => void save('hd')}>
+                Save in HD
+              </button>
+              <button type="button" role="menuitem" className="menu-row" onClick={() => void save('sd')}>
+                Save in SD
+              </button>
+              <hr className="menu-sep" />
+              <div className="menu-hint">Default is {quality.toUpperCase()} — change it in Settings.</div>
+            </div>
+          )}
+        </div>
 
         <div className="player-actions">
           <button className="btn" type="button" onClick={copyLink} title="Copy link">

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
-import QualityToggle from '../components/QualityToggle'
 import FeedGrid from '../components/FeedGrid'
 import FeedState from '../components/FeedState'
 import EmptyState from '../components/EmptyState'
@@ -72,7 +71,6 @@ export default function ForYou(): JSX.Element {
         right={
           <div className="controls">
             {tabs}
-            <QualityToggle />
             <ViewToggle value={mode} onChange={setMode} />
           </div>
         }

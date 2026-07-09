@@ -1,6 +1,6 @@
 {
   "name": "redgifs-downloader",
-  "version": "4.0.0",
+  "version": "4.9.0",
   "description": "RedGifs Downloader — Electron + React desktop app",
   "author": "privacytop",
   "homepage": "https://github.com/privacytop/redgifs-downloader",

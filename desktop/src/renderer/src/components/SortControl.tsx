@@ -1,3 +1,4 @@
+import Dropdown from './Dropdown'
 import { ORDERS, type Order } from '../lib/feedOptions'
 
 interface SortControlProps {
@@ -8,8 +9,8 @@ interface SortControlProps {
 }
 
 /**
- * The single sort control for every feed. A compact styled `.select` over the
- * shared `ORDERS` set — one widget, one option list, used identically app-wide.
+ * The single sort control for every feed. A custom dropdown over the shared
+ * `ORDERS` set — one widget, one option list, used identically app-wide.
  */
 export default function SortControl({
   value,
@@ -17,17 +18,11 @@ export default function SortControl({
   options = ORDERS
 }: SortControlProps): JSX.Element {
   return (
-    <select
-      className="select"
-      aria-label="Sort order"
+    <Dropdown
+      ariaLabel="Sort order"
       value={value}
-      onChange={(e) => onChange(e.target.value as Order)}
-    >
-      {options.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      onChange={(id) => onChange(id as Order)}
+      options={options}
+    />
   )
 }

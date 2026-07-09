@@ -1561,16 +1561,123 @@ input::placeholder { color: var(--dim); }
 }
 .menu-sep { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
 
-/* Inside the player rail (overflow-y: auto), an absolutely-anchored panel gets
+/* Inside the player rail (overflow-y: auto), the collection popover gets
    clipped by the rail's scrollport on short windows — pin it to the viewport
-   beside the rail instead so every row stays reachable. */
-.player-rail .menu-panel {
+   beside the rail instead so every row stays reachable. (Scoped to .cmenu so
+   other rail popovers, e.g. the Save quality menu, stay anchored.) */
+.player-rail .menu-panel.cmenu {
   position: fixed;
   top: auto;
   right: 316px;
   bottom: 24px;
   max-height: min(340px, calc(100vh - 48px));
 }
+
+/* --- Split Save button (player rail): default action + quality caret -------- */
+.save-split {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+.save-split .save-main {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.save-split .save-caret {
+  width: 38px;
+  padding: 12px 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid rgba(23, 10, 8, 0.35);
+}
+.save-split .save-caret svg { width: 14px; height: 14px; }
+.save-split .menu-panel {
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  width: auto;
+}
+
+/* --- Custom dropdown (replaces native selects) ------------------------------- */
+.dd { position: relative; display: inline-flex; }
+.dd .menu-panel {
+  left: 0;
+  right: auto;
+  min-width: 100%;
+  width: max-content;
+  max-width: 280px;
+}
+.dd-check {
+  margin-left: auto;
+  color: var(--ember);
+  flex: none;
+}
+.dd-check svg { width: 13px; height: 13px; display: block; }
+
+/* --- Generic invisible cover button (cards that hold inner actions) ---------- */
+.card-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+/* --- Creator card follow affordance ------------------------------------------ */
+.creator-card { position: relative; }
+.creator-card .creator-info { position: relative; z-index: 2; pointer-events: none; }
+.creator-card .creator-avatar { position: relative; z-index: 2; pointer-events: none; }
+.creator-follow {
+  position: relative;
+  z-index: 2;
+  margin-left: auto;
+  flex: none;
+  opacity: 0;
+  transition: opacity var(--t-fast) ease;
+}
+.creator-card:hover .creator-follow,
+.creator-card:focus-within .creator-follow,
+.creator-follow.on { opacity: 1; }
+
+/* --- Settings rows (Notion-style: label left, control right) ----------------- */
+.set-section { margin-bottom: 30px; max-width: 640px; }
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 13px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.set-row:last-child { border-bottom: 0; }
+.set-main { min-width: 0; }
+.set-label { font-size: 13.5px; color: var(--ink); }
+.set-hint {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--dim);
+  margin-top: 3px;
+  line-height: 1.5;
+}
+.set-control { flex: none; display: flex; align-items: center; gap: 8px; }
+
+/* --- Thumbnail fallback (expired preview URLs) ------------------------------- */
+.list-thumb-fallback {
+  width: 60px;
+  height: 38px;
+  flex: none;
+  border-radius: 5px;
+  background: var(--line);
+  color: var(--dim);
+  display: grid;
+  place-items: center;
+}
+.list-thumb-fallback svg { width: 15px; height: 15px; }
 
 /* --- Status pill (Downloads / History rows) --------------------------------- */
 .pill {

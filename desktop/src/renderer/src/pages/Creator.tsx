@@ -9,7 +9,10 @@ import { useViewMode } from '../hooks/useViewMode'
 import { useNotify } from '../context/notify'
 import { useQuality } from '../context/quality'
 import { useNav } from '../context/nav'
+import { useAuthed } from '../hooks/useAuthed'
 import { formatCount } from '../lib/format'
+import { FOLLOW_EVENT, FOLLOWS_RELOADED_EVENT, isFollowing, loadFollows, setFollow } from '../lib/follows'
+import type { FollowChange } from '../lib/follows'
 import { DEFAULT_ORDER, typeNoun, type ContentType, type Order } from '../lib/feedOptions'
 import type { UserProfile } from '@shared/types'
 
@@ -25,9 +28,12 @@ export default function Creator({ username }: { username: string }): JSX.Element
   const [type, setType] = useState<ContentType>('g')
   const [order, setOrder] = useState<Order>(DEFAULT_ORDER)
 
+  const authed = useAuthed()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [tags, setTags] = useState<string[]>([])
   const [showAllTags, setShowAllTags] = useState(false)
+  const [following, setFollowing] = useState(() => isFollowing(username))
+  const [followBusy, setFollowBusy] = useState(false)
   // "Download all" lifecycle: disabled from click until the queue call lands,
   // and kept disabled once queued so a re-click can't queue the catalog twice.
   const [queueState, setQueueState] = useState<'idle' | 'queuing' | 'queued'>('idle')
@@ -55,6 +61,39 @@ export default function Creator({ username }: { username: string }): JSX.Element
       alive = false
     }
   }, [username])
+
+  // Reflect the shared follows cache, including changes made in the player or
+  // on creator cards while this page is open.
+  useEffect(() => {
+    let alive = true
+    setFollowing(isFollowing(username))
+    void loadFollows().then(() => {
+      if (alive) setFollowing(isFollowing(username))
+    })
+    const onChange = (e: Event): void => {
+      const d = (e as CustomEvent<FollowChange>).detail
+      if (d.username.toLowerCase() === username.toLowerCase()) setFollowing(d.following)
+    }
+    const onReloaded = (): void => setFollowing(isFollowing(username))
+    window.addEventListener(FOLLOW_EVENT, onChange)
+    window.addEventListener(FOLLOWS_RELOADED_EVENT, onReloaded)
+    return () => {
+      alive = false
+      window.removeEventListener(FOLLOW_EVENT, onChange)
+      window.removeEventListener(FOLLOWS_RELOADED_EVENT, onReloaded)
+    }
+  }, [username])
+
+  const toggleFollow = (): void => {
+    if (followBusy) return
+    setFollowBusy(true)
+    const next = !following
+    setFollow(username, next)
+      .catch((e) =>
+        notify((next ? 'Follow' : 'Unfollow') + ' failed: ' + (e as Error).message, 'error')
+      )
+      .finally(() => setFollowBusy(false))
+  }
 
   const feed = usePlayableFeed(
     (p) => window.api.getCreatorContent(username, { type, order, page: p }),
@@ -128,6 +167,18 @@ export default function Creator({ username }: { username: string }): JSX.Element
             {stat(profile?.views ?? 0, 'Views')}
           </div>
         </div>
+        {authed === true && (
+          <button
+            type="button"
+            className={`btn ${following ? 'on' : ''}`}
+            aria-pressed={following}
+            disabled={followBusy}
+            onClick={toggleFollow}
+            title={following ? `Unfollow @${username}` : `Follow @${username}`}
+          >
+            {following ? 'Following' : 'Follow'}
+          </button>
+        )}
       </div>
 
       {tags.length > 0 && (

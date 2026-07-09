@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
-import QualityToggle from '../components/QualityToggle'
+import Dropdown from '../components/Dropdown'
 import FeedGrid from '../components/FeedGrid'
 import EmptyState from '../components/EmptyState'
 import FeedState from '../components/FeedState'
@@ -166,7 +166,6 @@ export default function Library(): JSX.Element {
         title="All media"
         right={
           <div className="controls">
-            <QualityToggle />
             <ViewToggle value={mode} onChange={setMode} />
           </div>
         }
@@ -180,32 +179,22 @@ export default function Library(): JSX.Element {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <select
-          className="select"
-          aria-label="Source"
+        <Dropdown
+          ariaLabel="Source"
           value={source}
-          onChange={(e) => setSource(e.target.value)}
-        >
-          <option value="all">All sources</option>
-          <option value="liked">Liked</option>
-          {collections.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className="select"
-          aria-label="Sort by"
+          onChange={setSource}
+          options={[
+            { id: 'all', label: 'All sources' },
+            { id: 'liked', label: 'Liked' },
+            ...collections.map((c) => ({ id: c.id, label: c.name }))
+          ]}
+        />
+        <Dropdown
+          ariaLabel="Sort by"
           value={sort}
-          onChange={(e) => setSort(e.target.value as SortKey)}
-        >
-          {SORTS.map((s) => (
-            <option key={s.key} value={s.key}>
-              {s.label}
-            </option>
-          ))}
-        </select>
+          onChange={(id) => setSort(id as SortKey)}
+          options={SORTS.map((s) => ({ id: s.key, label: s.label }))}
+        />
         <button className="btn btn-ember btn-sm" onClick={reindex} disabled={running}>
           {running ? 'Indexing…' : 'Reindex'}
         </button>

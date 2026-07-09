@@ -197,7 +197,7 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
   return (
     <div
       ref={rootRef}
-      className="menu-panel"
+      className="menu-panel cmenu"
       aria-label="Add to collection"
       onWheel={(e) => e.stopPropagation()}
     >

@@ -2,12 +2,9 @@ import { useEffect, useState } from 'react'
 import type { Settings, ToastType } from '@shared/types'
 import PageHeader from '../components/PageHeader'
 import EmptyState from '../components/EmptyState'
+import QualityToggle from '../components/QualityToggle'
+import { useQuality } from '../context/quality'
 import { useThumbnailMode, type ThumbMode } from '../hooks/useThumbnailMode'
-
-const QUALITIES: { id: Settings['preferredQuality']; label: string }[] = [
-  { id: 'hd', label: 'HD' },
-  { id: 'sd', label: 'SD' }
-]
 
 const THUMB_MODES: { id: ThumbMode; label: string }[] = [
   { id: 'default', label: 'Default' },
@@ -20,6 +17,16 @@ const THUMB_MODES: { id: ThumbMode; label: string }[] = [
 const clampConcurrency = (v: unknown): number =>
   Math.min(16, Math.max(1, Math.round(Number(v) || 1)))
 
+// Middle-ellipsize long paths so the folder hint stays one quiet line.
+const shortenPath = (p: string): string =>
+  p.length <= 56 ? p : `${p.slice(0, 26)}…${p.slice(-29)}`
+
+// `preferredQuality` is owned by QualityToggle — it persists through
+// QualityProvider on every flip — so only the fields the Save button actually
+// owns count toward this form's dirty state.
+const fingerprint = (v: Settings): string =>
+  JSON.stringify([v.downloadPath, v.maxConcurrentDownloads, v.createUserFolders, v.overwriteExisting])
+
 export default function SettingsPage({ notify }: { notify: (m: string, t?: ToastType) => void }): JSX.Element {
   const [s, setS] = useState<Settings | null>(null)
   // Last-persisted snapshot — "dirty" means the form differs from what's on disk.
@@ -28,6 +35,7 @@ export default function SettingsPage({ notify }: { notify: (m: string, t?: Toast
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [thumbMode, setThumbMode] = useThumbnailMode()
+  const { quality } = useQuality()
 
   const load = (): void => {
     window.api
@@ -45,7 +53,7 @@ export default function SettingsPage({ notify }: { notify: (m: string, t?: Toast
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const dirty = s !== null && saved !== null && JSON.stringify(s) !== JSON.stringify(saved)
+  const dirty = s !== null && saved !== null && fingerprint(s) !== fingerprint(saved)
 
   const set = <K extends keyof Settings>(k: K, v: Settings[K]): void => {
     if (s) setS({ ...s, [k]: v })
@@ -53,8 +61,13 @@ export default function SettingsPage({ notify }: { notify: (m: string, t?: Toast
 
   async function save(): Promise<void> {
     if (!s || saving) return
-    // Clamp at save time too — blur may never fire (e.g. Enter from the field).
-    const next = { ...s, maxConcurrentDownloads: clampConcurrency(s.maxConcurrentDownloads) }
+    const next = {
+      ...s,
+      // Clamp at save time too — blur may never fire (e.g. Enter from the field).
+      maxConcurrentDownloads: clampConcurrency(s.maxConcurrentDownloads),
+      // Never write a stale snapshot over the quality QualityToggle persisted.
+      preferredQuality: quality
+    }
     setS(next)
     setSaving(true)
     try {
@@ -97,88 +110,117 @@ export default function SettingsPage({ notify }: { notify: (m: string, t?: Toast
         />
       ) : !s ? null : (
         <>
-          <div className="field">
-            <span className="field-label">Download folder</span>
-            <div className="toolbar">
-              <input
-                className="field-search"
-                value={s.downloadPath}
-                onChange={(e) => set('downloadPath', e.target.value)}
-              />
-              <button className="btn" onClick={pick} disabled={picking}>
-                {picking ? 'Browsing…' : 'Browse…'}
-              </button>
-            </div>
-          </div>
+          <section className="set-section">
+            <div className="section-label">Downloads</div>
 
-          <div className="field">
-            <span className="field-label">Max concurrent downloads</span>
-            <input
-              type="number"
-              min={1}
-              max={16}
-              value={s.maxConcurrentDownloads}
-              onChange={(e) => set('maxConcurrentDownloads', Number(e.target.value))}
-              onBlur={() => set('maxConcurrentDownloads', clampConcurrency(s.maxConcurrentDownloads))}
-            />
-            <span className="field-hint">Between 1 and 16.</span>
-          </div>
-
-          <div className="field">
-            <span className="field-label">Quality</span>
-            <div className="seg" role="group" aria-label="Quality">
-              {QUALITIES.map((q) => (
-                <button
-                  key={q.id}
-                  type="button"
-                  className={s.preferredQuality === q.id ? 'on' : ''}
-                  aria-pressed={s.preferredQuality === q.id}
-                  onClick={() => set('preferredQuality', q.id)}
-                >
-                  {q.label}
+            <div className="set-row">
+              <div className="set-main">
+                <div className="set-label">Download folder</div>
+                <div className="set-hint" title={s.downloadPath || undefined}>
+                  {s.downloadPath ? shortenPath(s.downloadPath) : 'No folder chosen yet'}
+                </div>
+              </div>
+              <div className="set-control">
+                <button className="btn btn-sm" onClick={pick} disabled={picking}>
+                  {picking ? 'Browsing…' : 'Browse…'}
                 </button>
-              ))}
+              </div>
             </div>
-          </div>
 
-          <div className="field">
-            <span className="field-label">Thumbnail frame</span>
-            <div className="seg" role="group" aria-label="Thumbnail frame">
-              {THUMB_MODES.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={thumbMode === m.id ? 'on' : ''}
-                  aria-pressed={thumbMode === m.id}
-                  onClick={() => setThumbMode(m.id)}
-                >
-                  {m.label}
-                </button>
-              ))}
+            <div className="set-row">
+              <div className="set-main">
+                <label className="set-label" htmlFor="set-concurrency">
+                  Max concurrent downloads
+                </label>
+                <div className="set-hint">How many files transfer at once · 1–16</div>
+              </div>
+              <div className="set-control">
+                <input
+                  id="set-concurrency"
+                  type="number"
+                  min={1}
+                  max={16}
+                  value={s.maxConcurrentDownloads}
+                  onChange={(e) => set('maxConcurrentDownloads', Number(e.target.value))}
+                  onBlur={() => set('maxConcurrentDownloads', clampConcurrency(s.maxConcurrentDownloads))}
+                />
+              </div>
             </div>
-            <span className="field-hint">
-              Auto swaps a video frame in when a thumbnail is near-black. Applies immediately.
-            </span>
-          </div>
 
-          <label className="field-check">
-            <input
-              type="checkbox"
-              checked={s.createUserFolders}
-              onChange={(e) => set('createUserFolders', e.target.checked)}
-            />
-            Create per-user folders
-          </label>
-          <label className="field-check">
-            <input
-              type="checkbox"
-              checked={s.overwriteExisting}
-              onChange={(e) => set('overwriteExisting', e.target.checked)}
-            />
-            Overwrite existing files
-          </label>
+            <div className="set-row">
+              <div className="set-main">
+                <div className="set-label">Default quality</div>
+                <div className="set-hint">Used for every save · applies instantly, app-wide</div>
+              </div>
+              <div className="set-control">
+                <QualityToggle />
+              </div>
+            </div>
 
-          <div className="field">
+            <div className="set-row">
+              <div className="set-main">
+                <label className="set-label" htmlFor="set-user-folders">
+                  Per-creator folders
+                </label>
+                <div className="set-hint">File each save under a folder named after its creator</div>
+              </div>
+              <div className="set-control">
+                <input
+                  id="set-user-folders"
+                  type="checkbox"
+                  checked={s.createUserFolders}
+                  onChange={(e) => set('createUserFolders', e.target.checked)}
+                />
+              </div>
+            </div>
+
+            <div className="set-row">
+              <div className="set-main">
+                <label className="set-label" htmlFor="set-overwrite">
+                  Overwrite existing files
+                </label>
+                <div className="set-hint">Re-download over a file that is already on disk</div>
+              </div>
+              <div className="set-control">
+                <input
+                  id="set-overwrite"
+                  type="checkbox"
+                  checked={s.overwriteExisting}
+                  onChange={(e) => set('overwriteExisting', e.target.checked)}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="set-section">
+            <div className="section-label">Appearance</div>
+
+            <div className="set-row">
+              <div className="set-main">
+                <div className="set-label">Thumbnail frame</div>
+                <div className="set-hint">
+                  Auto swaps in a mid-clip frame when a poster is near-black · applies immediately
+                </div>
+              </div>
+              <div className="set-control">
+                <div className="seg" role="group" aria-label="Thumbnail frame">
+                  {THUMB_MODES.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className={thumbMode === m.id ? 'on' : ''}
+                      aria-pressed={thumbMode === m.id}
+                      onClick={() => setThumbMode(m.id)}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="set-section">
             <div className="toolbar">
               <button className="btn btn-ember" onClick={save} disabled={saving || !dirty}>
                 {saving ? 'Saving…' : 'Save changes'}

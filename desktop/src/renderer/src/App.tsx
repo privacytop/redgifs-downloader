@@ -264,7 +264,7 @@ function Shell({
     <div className="app">
       <aside className="sidebar">
         <div className="wordmark">
-          RedGifs<span className="dot">.</span>
+          RedLoader<span className="dot">.</span>
         </div>
 
         <div className="sidebar-search-wrap">

@@ -1,11 +1,19 @@
 name: Release
 
 # Runs on:
-#   1. Every push to main -> auto-releases v4.0.<run-number> (auto-incrementing)
-#   2. A version tag (git tag v4.1.0 && git push origin v4.1.0) -> that version
+#   1. Every push to main -> auto-releases the newest STABLE v* tag with its
+#      patch advanced by the commit count since it (monotonic, idempotent)
+#   2. A version tag (git tag v4.10.0 && git push origin v4.10.0) -> that version
 #   3. Manually from the Actions tab -> "Release" -> "Run workflow"
-# Each OS runner builds its native executables and electron-builder uploads
-# them to a GitHub Release.
+#
+# Structure: a `prepare` job computes the version ONCE and creates the GitHub
+# release up front, then the OS matrix builds and uploads artifacts into it.
+# This is deliberate — when the matrix jobs computed versions themselves, the
+# first publisher created the release tag, and any re-run or slower runner
+# then saw its own commit as "already tagged" and skipped, leaving releases
+# permanently missing that OS's artifacts. Versions also derive from git tags,
+# not github.run_number: the run counter silently resets when the workflow
+# file is renamed/recreated (that's how 4.0.0 shipped right after 4.9.0).
 on:
   push:
     branches:
@@ -18,7 +26,72 @@ permissions:
   contents: write
 
 jobs:
+  prepare:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      skip: ${{ steps.ver.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags — the version is derived from the newest tag.
+          fetch-depth: 0
+
+      - name: Compute version
+        id: ver
+        shell: bash
+        run: |
+          SKIP=false
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+          elif git tag --points-at HEAD --list 'v*' | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            # HEAD already carries a stable version tag: its own tag run (or a
+            # previous run) publishes that exact version — don't double-release.
+            V="0.0.0"
+            SKIP=true
+            echo "HEAD is already tagged — skipping the branch release."
+          else
+            # Newest STABLE tag only: prerelease suffixes (v4.10.0-rc.1) sort
+            # above their release in versionsort AND break the patch arithmetic.
+            LATEST=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+            if [ -n "$LATEST" ] && git rev-parse -q --verify "$LATEST^{commit}" >/dev/null; then
+              BASE=${LATEST#v}
+              MAJOR=${BASE%%.*}
+              REST=${BASE#*.}
+              MINOR=${REST%%.*}
+              PATCH=${BASE##*.}
+              N=$(git rev-list "$LATEST"..HEAD --count)
+              V="$MAJOR.$MINOR.$((PATCH + N))"
+            else
+              # No stable tag reachable (fresh fork / wiped tags): still emit a
+              # monotonic version instead of crashing on a missing ref.
+              V="4.9.$(git rev-list HEAD --count)"
+            fi
+          fi
+          echo "Version: $V (skip=$SKIP)"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+
+      # Create the release once, before any build exists — the matrix jobs only
+      # upload into it, so two runners can't race to create the same release
+      # (HTTP 422) and re-runs of a failed OS can still repair the release.
+      - name: Create release
+        if: steps.ver.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          if gh release view "v$V" > /dev/null 2>&1; then
+            echo "Release v$V already exists — matrix will (re)upload artifacts."
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            gh release create "v$V" --title "v$V" --notes "Automated release v$V"
+          else
+            gh release create "v$V" --title "v$V" --notes "Automated release v$V" --target "$GITHUB_SHA"
+          fi
+
   build:
+    needs: prepare
+    if: needs.prepare.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -47,24 +120,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Version = the pushed tag (e.g. v4.1.0 -> 4.1.0), else 4.<run-number>.0
-      # (semver needs three parts), which auto-increments on every push to main.
-      # All matrix jobs in a run share github.run_number, so every OS publishes
-      # the same version.
       - name: Set version
         shell: bash
-        run: |
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            V="${GITHUB_REF_NAME#v}"
-          else
-            V="4.${{ github.run_number }}.0"
-          fi
-          echo "Building version $V"
-          npm version "$V" --no-git-tag-version --allow-same-version
+        run: npm version "${{ needs.prepare.outputs.version }}" --no-git-tag-version --allow-same-version
 
       - name: Build and publish
         env:
-          # Provided automatically by Actions; lets electron-builder create the
-          # release and upload the built artifacts to it.
+          # Provided automatically by Actions; lets electron-builder upload the
+          # built artifacts to the release `prepare` created.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build && npx --no-install electron-builder --publish always
