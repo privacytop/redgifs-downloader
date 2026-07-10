@@ -1,8 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
-import { indexLibrary } from './indexer'
-import type { RedgifsApi } from './api'
-import type { Storage } from './storage'
-import type { Content, ContentResponse, LibraryProgress } from '../shared/types'
+import { indexLibrary, type IndexApi, type IndexStore } from './indexer'
+import type { Content, ContentResponse, LibraryProgress } from './types'
 
 function gif(id: string): Content {
   return {
@@ -20,7 +18,7 @@ describe('indexLibrary', () => {
     const storage = {
       cacheContents: (c: Content[], src: { type: string; id: string }) =>
         cached.push({ type: src.type, id: src.id, ids: c.map((x) => x.id) })
-    } as unknown as Storage
+    } as unknown as IndexStore
 
     const api = {
       getCollections: async () => [
@@ -32,7 +30,7 @@ describe('indexLibrary', () => {
           ? page([gif(`${id}-${p}`)], p, 2) // c1 has two pages
           : page([gif(`${id}-${p}`)], p, 1), // c2 has one
       getLikes: async (p: number) => page([gif(`like-${p}`)], p, 1)
-    } as unknown as RedgifsApi
+    } as unknown as IndexApi
 
     const events: LibraryProgress[] = []
     const final = await indexLibrary(api, storage, (p) => events.push(p))
@@ -55,7 +53,7 @@ describe('indexLibrary', () => {
     const storage = {
       cacheContents: (c: Content[], src: { type: string }) =>
         cached.push(`${src.type}:${c.map((x) => x.id).join(',')}`)
-    } as unknown as Storage
+    } as unknown as IndexStore
 
     const api = {
       getCollections: async () => [{ id: 'bad', name: 'Bad' }],
@@ -63,7 +61,7 @@ describe('indexLibrary', () => {
         throw new Error('boom')
       }),
       getLikes: async (p: number) => page([gif(`like-${p}`)], p, 1)
-    } as unknown as RedgifsApi
+    } as unknown as IndexApi
 
     const final = await indexLibrary(api, storage, () => undefined)
 

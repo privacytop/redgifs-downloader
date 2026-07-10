@@ -1,0 +1,17 @@
+{
+  "name": "@redloader/core",
+  "version": "0.1.0",
+  "description": "Shared logic for RedLoader desktop + mobile (types, API client, rate limiter, indexer, download helpers)",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3",
+    "vitest": "^2.0.5"
+  }
+}

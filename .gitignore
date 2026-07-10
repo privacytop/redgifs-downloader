@@ -14,3 +14,4 @@ mobile/dist/
 mobile/android/.gradle/
 mobile/android/app/build/
 mobile/.spike-env
+packages/*/node_modules/

@@ -9,33 +9,8 @@ import type {
 import type { RedgifsApi } from './api'
 import type { Storage } from './storage'
 import { RateLimiter } from './ratelimit'
-
-export function extFromUrl(url: string): string {
-  const path = url.split('?')[0]
-  const dot = path.lastIndexOf('.')
-  const slash = path.lastIndexOf('/')
-  if (dot > slash && dot !== -1) return path.slice(dot + 1)
-  return 'mp4'
-}
-
-export function sanitize(name: string): string {
-  return name.replace(/[/\\:*?"<>|]/g, '_')
-}
-
-export function pickUrl(c: Content, quality: Quality): string {
-  const { hd, sd } = c.urls
-  if (quality === 'sd') return sd || hd || ''
-  return hd || sd || ''
-}
-
-export function buildFilename(c: Content, rank: number): string {
-  const ext = extFromUrl(c.urls.hd || c.urls.sd || '')
-  return sanitize(`${String(rank).padStart(4, '0')}_${c.id}_${c.username}.${ext}`)
-}
-
-export function buildContentsRequest(contents: Content[], username?: string, quality?: Quality): DownloadRequest {
-  return { type: 'single', username, contentIds: contents.map((c) => c.id), quality }
-}
+// Pure download helpers now live in @redloader/core, shared with mobile.
+import { buildContentsRequest, buildFilename, pickUrl } from '../../../packages/core/src/download'
 
 export interface DownloaderDeps {
   api: RedgifsApi

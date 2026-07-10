@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildContentsRequest, buildFilename, extFromUrl, pickUrl } from './downloader'
+import { buildContentsRequest, buildFilename, extFromUrl, pickUrl } from './download'
 
-describe('downloader helpers', () => {
+describe('download helpers', () => {
   it('parses extension and strips query strings', () => {
     expect(extFromUrl('https://x/AbC.mp4?token=1')).toBe('mp4')
     expect(extFromUrl('https://x/noext')).toBe('mp4')
