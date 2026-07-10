@@ -15,8 +15,14 @@ function base64UrlDecode(seg: string): string {
     }
     return decodeURIComponent(out)
   }
-  // Node path.
-  return Buffer.from(b64, 'base64').toString('utf-8')
+  // Node path (Electron main). Reach Buffer off globalThis with a local shape so
+  // this shared module typechecks in the mobile/browser build without pulling in
+  // @types/node.
+  const g = globalThis as {
+    Buffer?: { from(data: string, encoding: string): { toString(encoding: string): string } }
+  }
+  if (g.Buffer) return g.Buffer.from(b64, 'base64').toString('utf-8')
+  throw new Error('No base64 decoder available')
 }
 
 export function decodeJwt(token: string): Record<string, unknown> | null {

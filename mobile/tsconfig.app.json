@@ -27,5 +27,6 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "../packages/core/src"]
+  "include": ["src", "../packages/core/src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "../packages/core/src/**/*.test.ts"]
 }
