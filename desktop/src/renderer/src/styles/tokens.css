@@ -233,10 +233,10 @@ input::placeholder { color: var(--dim); }
   overflow: hidden;
   cursor: pointer;
   transition: border-color 0.18s ease, transform 0.18s ease;
-  /* Long grids: skip layout/paint for offscreen cards. The placeholder size
-     only matters before first paint — aspect-ratio keeps geometry stable. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 320px;
+  /* NOTE: no content-visibility here — it delayed offscreen card paint on top
+     of the posters' native lazy-loading, so fast scrolling showed blank tiles
+     until everything caught up. The Library's incremental render window is
+     what actually bounds the card count. */
 }
 .pcard:hover {
   border-color: var(--line2);
