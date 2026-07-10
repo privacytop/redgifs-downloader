@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">RedLoader</string>
     <string name="title_activity_main">RedLoader</string>
-    <string name="package_name">com.redloader.spike</string>
-    <string name="custom_url_scheme">com.redloader.spike</string>
+    <string name="package_name">com.redloader.mobile</string>
+    <string name="custom_url_scheme">com.redloader.mobile</string>
 </resources>

@@ -11,10 +11,10 @@ def releaseKeystore = System.getenv('ANDROID_KEYSTORE_FILE')
 if (releaseKeystore != null && releaseKeystore.trim().isEmpty()) releaseKeystore = null
 
 android {
-    namespace "com.redloader.spike"
+    namespace "com.redloader.mobile"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.redloader.spike"
+        applicationId "com.redloader.mobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode Integer.parseInt(System.getenv('ANDROID_VERSION_CODE') ?: '1')

@@ -20,3 +20,4 @@ mobile/RUNBOOK.md
 keys/
 *.jks
 *.keystore
+mobile/android/app/release/

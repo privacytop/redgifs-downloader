@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.redloader.spike',
+  appId: 'com.redloader.mobile',
   appName: 'RedLoader',
   webDir: 'dist'
 };

@@ -1,4 +1,4 @@
-package com.redloader.spike;
+package com.redloader.mobile;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
