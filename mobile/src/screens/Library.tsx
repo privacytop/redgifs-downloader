@@ -1,9 +1,226 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { indexLibrary, type Collection, type Content, type LibraryProgress } from '@redloader/core'
+import { api } from '../lib/api'
+import { storage } from '../lib/storage'
+import { useAuth } from '../context/auth'
+import { useToast } from '../context/toast'
+import { usePlayer } from '../player/PlayerProvider'
+import { usePagedFeed } from '../hooks/usePagedFeed'
+import MediaGrid from '../components/MediaGrid'
+import { formatCount } from '../lib/format'
+
+type View = 'media' | 'collections' | 'likes'
+const RENDER_BATCH = 60
+
+/** Library hub: the offline media index, collections, and likes. */
 export default function Library(): React.JSX.Element {
+  const { authenticated } = useAuth()
+  const [view, setView] = useState<View>('media')
+
   return (
     <div className="page">
-      <div className="kicker">RedLoader</div>
+      <div className="kicker">Library</div>
       <h1 className="title">Library</h1>
-      <div className="empty"><div className="empty-msg">Coming soon</div></div>
+      <div style={{ margin: '12px 0 18px' }}>
+        <div className="seg" role="group" aria-label="Library view">
+          <button className={view === 'media' ? 'on' : ''} onClick={() => setView('media')}>All media</button>
+          <button className={view === 'collections' ? 'on' : ''} onClick={() => setView('collections')}>Collections</button>
+          <button className={view === 'likes' ? 'on' : ''} onClick={() => setView('likes')}>Likes</button>
+        </div>
+      </div>
+
+      {!authenticated ? (
+        <div className="empty">
+          <div className="empty-msg">Sign in to use your library</div>
+          <div className="empty-sub">Your likes, collections and the offline index need a RedGifs account.</div>
+        </div>
+      ) : view === 'media' ? (
+        <AllMedia />
+      ) : view === 'collections' ? (
+        <Collections />
+      ) : (
+        <Likes />
+      )}
     </div>
+  )
+}
+
+/** The offline metadata index: reindex + local search over cached gifs. */
+function AllMedia(): React.JSX.Element {
+  const notify = useToast()
+  const player = usePlayer()
+  const [all, setAll] = useState<Content[]>([])
+  const [query, setQuery] = useState('')
+  const [count, setCount] = useState(0)
+  const [progress, setProgress] = useState<LibraryProgress | null>(null)
+  const [visible, setVisible] = useState(RENDER_BATCH)
+
+  const load = useCallback(async (): Promise<void> => {
+    try {
+      const [rows, n] = await Promise.all([storage.searchCachedGifs({}), storage.cachedCount()])
+      setAll(rows)
+      setCount(n)
+    } catch (e) {
+      notify('Couldn’t read the library: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    }
+  }, [notify])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const reindex = async (): Promise<void> => {
+    if (progress?.running) return
+    setProgress({ phase: 'collections', collectionsDone: 0, collectionsTotal: 0, gifsCached: 0, currentLabel: 'Starting…', running: true })
+    try {
+      await indexLibrary(
+        api,
+        { cacheContents: (items, src) => storage.cacheContents(items, src) },
+        (p) => setProgress(p.running ? p : null)
+      )
+      setProgress(null)
+      await load()
+      notify('Library indexed', 'success')
+    } catch (e) {
+      setProgress(null)
+      notify('Indexing failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    }
+  }
+
+  const results = useMemo(() => {
+    const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+    if (!terms.length) return all
+    return all.filter((c) => {
+      const hay = (c.title + ' ' + c.description + ' ' + c.username + ' ' + (c.tags ?? []).join(' ')).toLowerCase()
+      return terms.every((t) => hay.includes(t))
+    })
+  }, [all, query])
+
+  useEffect(() => setVisible(RENDER_BATCH), [query])
+
+  const shown = results.slice(0, visible)
+  const running = progress?.running ?? false
+
+  const open = (_c: Content, index: number): void => {
+    player.open({ items: results, index, label: 'Library', loadMore: async () => [] })
+  }
+
+  if (count === 0 && !running) {
+    return (
+      <div className="empty">
+        <div className="empty-msg">Nothing indexed yet</div>
+        <div className="empty-sub">Index caches every gif in your collections and likes so you can search them offline.</div>
+        <button className="btn btn-ember" onClick={() => void reindex()}>Index my library</button>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <input
+        className="search"
+        placeholder="Search cached gifs…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '12px 0 16px' }}>
+        <button className="btn btn-sm" disabled={running} onClick={() => void reindex()}>
+          {running ? 'Indexing…' : 'Reindex'}
+        </button>
+        <span className="readout">
+          {running
+            ? `${progress?.gifsCached ?? 0} cached · ${progress?.currentLabel ?? ''}`
+            : `${formatCount(results.length)} of ${formatCount(count)}`}
+        </span>
+      </div>
+      <MediaGrid
+        items={shown}
+        onOpen={open}
+        onEndReached={() => setVisible((v) => v + RENDER_BATCH)}
+        hasMore={visible < results.length}
+      />
+    </>
+  )
+}
+
+/** The user's collections as a cover-tile grid. */
+function Collections(): React.JSX.Element {
+  const navigate = useNavigate()
+  const notify = useToast()
+  const [cols, setCols] = useState<Collection[] | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    api
+      .getCollections()
+      .then((c) => {
+        if (alive) setCols(c)
+      })
+      .catch((e) => {
+        if (alive) {
+          setCols([])
+          notify('Couldn’t load collections: ' + (e instanceof Error ? e.message : String(e)), 'error')
+        }
+      })
+    return () => {
+      alive = false
+    }
+  }, [notify])
+
+  if (cols === null) return <div className="loading">Loading…</div>
+  if (!cols.length) return <div className="empty"><div className="empty-msg">No collections yet</div></div>
+
+  return (
+    <div className="tile-grid">
+      {cols.map((c) => (
+        <button
+          key={c.id}
+          className="tile"
+          style={{ textAlign: 'left', padding: 0, cursor: 'pointer' }}
+          onClick={() => navigate(`/collection/${encodeURIComponent(c.id)}`, { state: { title: c.name } })}
+        >
+          <div className="tile-cover">
+            {c.thumbnailUrl ? (
+              <img src={c.thumbnailUrl} alt="" loading="lazy" />
+            ) : (
+              <div className="avatar" style={{ position: 'absolute', inset: 0, borderRadius: 0 }}>
+                {(c.name[0] ?? '#').toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div className="tile-body">
+            <div className="tile-title">{c.name}</div>
+            <div className="tile-sub">{formatCount(c.contentCount)} gifs{c.published ? '' : ' · private'}</div>
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** The user's liked feed. */
+function Likes(): React.JSX.Element {
+  const player = usePlayer()
+  const feed = usePagedFeed((p) => api.getLikes(p), [])
+
+  const open = (_c: Content, index: number): void => {
+    player.open({ items: feed.items, index, label: 'Likes', loadMore: feed.loadMoreItems })
+  }
+
+  if (feed.error && feed.items.length === 0) {
+    return (
+      <div className="empty">
+        <div className="empty-msg">Couldn’t load likes</div>
+        <div className="empty-sub">{feed.error}</div>
+        <button className="btn" onClick={feed.reload}>Try again</button>
+      </div>
+    )
+  }
+  if (!feed.loading && feed.items.length === 0) {
+    return <div className="empty"><div className="empty-msg">No likes yet</div></div>
+  }
+  return (
+    <MediaGrid items={feed.items} onOpen={open} onEndReached={feed.loadMore} hasMore={feed.hasMore} loading={feed.loading} />
   )
 }
