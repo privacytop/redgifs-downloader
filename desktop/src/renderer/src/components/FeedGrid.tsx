@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Content } from '@shared/types'
 import type { ViewMode } from './ViewToggle'
 import MediaCard from './MediaCard'
@@ -71,14 +71,15 @@ export default function FeedGrid({
   const cbRef = useRef<{ onEndReached?: () => void; hasMore?: boolean; loading?: boolean }>({})
   cbRef.current = { onEndReached, hasMore, loading }
 
-  // Observe via callback ref: the sentinel mounts/unmounts with the error and
-  // hasMore states, and an effect keyed on mount-time state would keep watching
-  // a detached node after a retry — silently killing pagination.
-  const ioRef = useRef<IntersectionObserver | null>(null)
-  const sentinelRef = useCallback((el: HTMLDivElement | null): void => {
-    ioRef.current?.disconnect()
-    ioRef.current = null
-    if (!el) return
+  // The sentinel element lives in STATE (not a ref): the observer effect keys
+  // on it, so it re-runs whenever the sentinel mounts/unmounts (retry after a
+  // mid-feed error swaps the node) AND survives StrictMode's dev double-invoke
+  // — setup and cleanup are symmetric, unlike a ref-callback-created observer,
+  // which the doubled cleanup disconnected forever (infinite scroll silently
+  // stopped after the first window on every page in `npm run dev`).
+  const [sentinelEl, setSentinelEl] = useState<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!sentinelEl) return
     const io = new IntersectionObserver(
       (entries) => {
         const { onEndReached, hasMore, loading } = cbRef.current
@@ -86,10 +87,9 @@ export default function FeedGrid({
       },
       { rootMargin: '600px 0px' }
     )
-    io.observe(el)
-    ioRef.current = io
-  }, [])
-  useEffect(() => () => ioRef.current?.disconnect(), [])
+    io.observe(sentinelEl)
+    return () => io.disconnect()
+  }, [sentinelEl])
 
   const failed = Boolean(error) && items.length > 0 && !loading
   const sentinel = infinite ? (
@@ -105,7 +105,7 @@ export default function FeedGrid({
           )}
         </div>
       )}
-      {hasMore && !failed && <div ref={sentinelRef} className="feed-sentinel" aria-hidden="true" />}
+      {hasMore && !failed && <div ref={setSentinelEl} className="feed-sentinel" aria-hidden="true" />}
     </>
   ) : null
 
