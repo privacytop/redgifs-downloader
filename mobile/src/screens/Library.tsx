@@ -9,6 +9,9 @@ import { usePlayer } from '../player/PlayerProvider'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import { useCachedResource } from '../hooks/useCachedResource'
 import { readCache, writeCache } from '../lib/cache'
+import { sortContents, type SortKey } from '../lib/sort'
+import Feed from '../components/Feed'
+import SortBar from '../components/SortBar'
 import MediaGrid from '../components/MediaGrid'
 import { formatCount } from '../lib/format'
 
@@ -65,6 +68,7 @@ function AllMedia(): React.JSX.Element {
   // (no "Nothing indexed yet" flash before the async sqlite read resolves).
   const [count, setCount] = useState<number>(() => readCache<number>('library:count') ?? 0)
   const [loaded, setLoaded] = useState(false)
+  const [sort, setSort] = useState<SortKey>('default')
   const [progress, setProgress] = useState<LibraryProgress | null>(null)
   const [visible, setVisible] = useState(RENDER_BATCH)
 
@@ -105,14 +109,16 @@ function AllMedia(): React.JSX.Element {
 
   const results = useMemo(() => {
     const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
-    if (!terms.length) return all
-    return all.filter((c) => {
-      const hay = (c.title + ' ' + c.description + ' ' + c.username + ' ' + (c.tags ?? []).join(' ')).toLowerCase()
-      return terms.every((t) => hay.includes(t))
-    })
-  }, [all, query])
+    const filtered = terms.length
+      ? all.filter((c) => {
+          const hay = (c.title + ' ' + c.description + ' ' + c.username + ' ' + (c.tags ?? []).join(' ')).toLowerCase()
+          return terms.every((t) => hay.includes(t))
+        })
+      : all
+    return sortContents(filtered, sort)
+  }, [all, query, sort])
 
-  useEffect(() => setVisible(RENDER_BATCH), [query])
+  useEffect(() => setVisible(RENDER_BATCH), [query, sort])
 
   const shown = results.slice(0, visible)
   const running = progress?.running ?? false
@@ -152,6 +158,7 @@ function AllMedia(): React.JSX.Element {
             : `${formatCount(results.length)} of ${formatCount(count)}`}
         </span>
       </div>
+      <SortBar value={sort} onChange={setSort} />
       <MediaGrid
         items={shown}
         onOpen={open}
@@ -201,26 +208,6 @@ function Collections(): React.JSX.Element {
 
 /** The user's liked feed. */
 function Likes(): React.JSX.Element {
-  const player = usePlayer()
   const feed = usePagedFeed((p) => api.getLikes(p), [], 'feed:likes')
-
-  const open = (_c: Content, index: number): void => {
-    player.open({ items: feed.items, index, label: 'Likes', loadMore: feed.loadMoreItems })
-  }
-
-  if (feed.error && feed.items.length === 0) {
-    return (
-      <div className="empty">
-        <div className="empty-msg">Couldn’t load likes</div>
-        <div className="empty-sub">{feed.error}</div>
-        <button className="btn" onClick={feed.reload}>Try again</button>
-      </div>
-    )
-  }
-  if (!feed.loading && feed.items.length === 0) {
-    return <div className="empty"><div className="empty-msg">No likes yet</div></div>
-  }
-  return (
-    <MediaGrid items={feed.items} onOpen={open} onEndReached={feed.loadMore} hasMore={feed.hasMore} loading={feed.loading} />
-  )
+  return <Feed feed={feed} label="Likes" emptyMessage="No likes yet" />
 }

@@ -14,6 +14,7 @@ mobile/dist/
 mobile/android/.gradle/
 mobile/android/app/build/
 mobile/.spike-env
+mobile/.spike-shots/
 packages/*/node_modules/
 .idea/
 mobile/RUNBOOK.md

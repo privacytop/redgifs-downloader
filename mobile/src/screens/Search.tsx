@@ -2,11 +2,10 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
-import { usePlayer } from '../player/PlayerProvider'
-import MediaGrid from '../components/MediaGrid'
+import Feed from '../components/Feed'
 import { useToast } from '../context/toast'
 import { formatCount } from '../lib/format'
-import type { Content, Niche, UserResult } from '@redloader/core'
+import type { Niche, UserResult } from '@redloader/core'
 
 /**
  * Search results for a query taken from the route (/search/:query). Three
@@ -18,7 +17,6 @@ export default function Search(): React.JSX.Element {
   const params = useParams()
   const query = decodeURIComponent(params.query ?? '')
   const navigate = useNavigate()
-  const player = usePlayer()
   const notify = useToast()
 
   const [creators, setCreators] = useState<UserResult[]>([])
@@ -26,7 +24,8 @@ export default function Search(): React.JSX.Element {
 
   const feed = usePagedFeed(
     (p) => api.searchGifs({ search: query, order: 'latest', page: p }),
-    [query]
+    [query],
+    `feed:search:${query}`
   )
 
   useEffect(() => {
@@ -51,10 +50,6 @@ export default function Search(): React.JSX.Element {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query])
-
-  const open = (_c: Content, index: number): void => {
-    player.open({ items: feed.items, index, label: `"${query}"`, loadMore: feed.loadMoreItems })
-  }
 
   return (
     <div className="page">
@@ -110,26 +105,12 @@ export default function Search(): React.JSX.Element {
       )}
 
       <div className="section-label">Media</div>
-      {feed.error && feed.items.length === 0 ? (
-        <div className="empty">
-          <div className="empty-msg">Couldn’t load</div>
-          <div className="empty-sub">{feed.error}</div>
-          <button className="btn" onClick={feed.reload}>Try again</button>
-        </div>
-      ) : !feed.loading && feed.items.length === 0 ? (
-        <div className="empty">
-          <div className="empty-msg">No results for “{query}”</div>
-          <div className="empty-sub">Try a different search term.</div>
-        </div>
-      ) : (
-        <MediaGrid
-          items={feed.items}
-          onOpen={open}
-          onEndReached={feed.loadMore}
-          hasMore={feed.hasMore}
-          loading={feed.loading}
-        />
-      )}
+      <Feed
+        feed={feed}
+        label={`"${query}"`}
+        emptyMessage={`No results for “${query}”`}
+        emptyHint="Try a different search term."
+      />
     </div>
   )
 }

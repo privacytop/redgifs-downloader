@@ -2,25 +2,20 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
-import { usePlayer } from '../player/PlayerProvider'
-import MediaGrid from '../components/MediaGrid'
+import Feed from '../components/Feed'
 import { useToast } from '../context/toast'
 import { useAuth } from '../context/auth'
 import { FOLLOW_EVENT, isFollowing, loadFollows, setFollow, type FollowChange } from '../lib/follows'
 import { formatCount } from '../lib/format'
-import type { Content, UserProfile } from '@redloader/core'
+import type { UserProfile } from '@redloader/core'
 
 const MAX_TAGS = 16
-type Order = 'best' | 'latest' | 'top' | 'new'
-const ORDERS: Order[] = ['best', 'latest', 'top', 'new']
 
 /**
  * Creator: one creator's profile header (avatar, stats, follow, tags) over
- * their gif feed with an order filter. The same paginator drives the grid and
- * the swipe player.
+ * their gif feed. A shared Feed component provides the grid, sort, and player.
  */
 export default function Creator(): React.JSX.Element {
-  const player = usePlayer()
   const navigate = useNavigate()
   const notify = useToast()
   const { authenticated } = useAuth()
@@ -29,7 +24,6 @@ export default function Creator(): React.JSX.Element {
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [tags, setTags] = useState<string[]>([])
-  const [order, setOrder] = useState<Order>('best')
   const [following, setFollowing] = useState(() => isFollowing(username))
   const [followBusy, setFollowBusy] = useState(false)
 
@@ -57,14 +51,10 @@ export default function Creator(): React.JSX.Element {
   }, [username])
 
   const feed = usePagedFeed(
-    (p) => api.getCreatorContent(username, { order, page: p }),
-    [username, order],
-    `creator:${username}:${order}`
+    (p) => api.getCreatorContent(username, { order: 'best', page: p }),
+    [username],
+    `creator:${username}`
   )
-
-  const open = (_c: Content, index: number): void => {
-    player.open({ items: feed.items, index, label: `@${username}`, loadMore: feed.loadMoreItems })
-  }
 
   const follow = (): void => {
     if (followBusy) return
@@ -103,14 +93,6 @@ export default function Creator(): React.JSX.Element {
         </button>
       </div>
 
-      <div className="seg" role="group" aria-label="Sort" style={{ margin: '14px 0 4px' }}>
-        {ORDERS.map((o) => (
-          <button key={o} className={order === o ? 'on' : ''} onClick={() => setOrder(o)}>
-            {o}
-          </button>
-        ))}
-      </div>
-
       {tags.length > 0 && (
         <div className="chip-row" style={{ margin: '14px 0 4px' }}>
           {tags.slice(0, MAX_TAGS).map((t) => (
@@ -127,26 +109,7 @@ export default function Creator(): React.JSX.Element {
 
       <hr className="rule" />
 
-      {feed.error && feed.items.length === 0 ? (
-        <div className="empty">
-          <div className="empty-msg">Couldn’t load</div>
-          <div className="empty-sub">{feed.error}</div>
-          <button className="btn" onClick={feed.reload}>Try again</button>
-        </div>
-      ) : !feed.loading && feed.items.length === 0 ? (
-        <div className="empty">
-          <div className="empty-msg">No gifs yet</div>
-          <div className="empty-sub">@{username} hasn’t posted anything we can show right now.</div>
-        </div>
-      ) : (
-        <MediaGrid
-          items={feed.items}
-          onOpen={open}
-          onEndReached={feed.loadMore}
-          hasMore={feed.hasMore}
-          loading={feed.loading}
-        />
-      )}
+      <Feed feed={feed} label={`@${username}`} emptyMessage="No gifs yet" />
     </div>
   )
 }

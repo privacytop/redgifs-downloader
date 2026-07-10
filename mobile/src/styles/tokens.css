@@ -315,6 +315,20 @@ button { font-family: inherit; color: inherit; }
 }
 .tile-sub { font-family: var(--mono); font-size: 10px; color: var(--mut); margin-top: 4px; }
 
+/* --- Sort bar (horizontal scroll strip above a feed) ------------------------ */
+.sortbar {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 0 0 12px;
+  margin: 0 -16px 4px;
+  padding-left: 16px;
+  padding-right: 16px;
+  scrollbar-width: none;
+}
+.sortbar::-webkit-scrollbar { display: none; }
+.sortbar .chip { flex: none; }
+
 /* --- Chips ------------------------------------------------------------------ */
 .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
 .chip {
