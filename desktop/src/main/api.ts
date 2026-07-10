@@ -420,7 +420,14 @@ export class RedgifsApi {
   }
 
   async createCollection(name: string): Promise<void> {
-    await this.request<void>('POST', '/me/collections', undefined, true, { folderName: name })
+    // The endpoint now requires the full shape the site sends (a bare
+    // {folderName} started returning HTTP 500 mid-2026; contract pulled from
+    // the live SPA bundle). New folders default to private.
+    await this.request<void>('POST', '/me/collections', undefined, true, {
+      folderName: name,
+      description: null,
+      published: false
+    })
   }
 }
 
