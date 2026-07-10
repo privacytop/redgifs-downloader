@@ -1,59 +1,40 @@
-import { useState, type JSX } from 'react'
-import { AuthCapture, type AuthResult } from './plugins/authCapture'
-import { decodeJwt, isUserToken } from './lib/jwt'
+import { HashRouter, Route, Routes } from 'react-router-dom'
+import { ToastProvider } from './context/toast'
+import { PlayerProvider } from './player/PlayerProvider'
+import TabBar from './components/TabBar'
+import Home from './screens/Home'
+import Discover from './screens/Discover'
+import Search from './screens/Search'
+import Creator from './screens/Creator'
+import NicheDetail from './screens/NicheDetail'
+import TagDetail from './screens/TagDetail'
+import Library from './screens/Library'
+import Downloads from './screens/Downloads'
+import You from './screens/You'
 
-export default function App(): JSX.Element {
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState<AuthResult | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function signIn(): Promise<void> {
-    setBusy(true)
-    setError(null)
-    setResult(null)
-    try {
-      setResult(await AuthCapture.login())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const token = result?.token
-  const claims = token ? decodeJwt(token) : null
-
+export default function App(): React.JSX.Element {
   return (
-    <main style={{ padding: 24, fontFamily: 'sans-serif', lineHeight: 1.5 }}>
-      <h1>RedLoader — auth capture spike</h1>
-      <button onClick={signIn} disabled={busy} style={{ padding: '10px 18px', fontSize: 16 }}>
-        {busy ? 'Opening sign-in…' : 'Sign in to RedGifs'}
-      </button>
-
-      {error && <p style={{ color: 'crimson' }}>Error: {error}</p>}
-
-      {result?.cancelled && <p>Sign-in window closed with no token captured.</p>}
-
-      {token && (
-        <section style={{ marginTop: 20 }}>
-          <p>
-            <b>Captured via:</b> {result?.source}
-          </p>
-          <p>
-            <b>Is user token:</b> {String(isUserToken(token))}
-          </p>
-          <p>
-            <b>preferred_username:</b> {String(claims?.preferred_username ?? '—')}
-          </p>
-          <p>
-            <b>sub:</b> {String(claims?.sub ?? '—')}
-          </p>
-          <p>
-            <b>exp:</b> {String(claims?.exp ?? '—')}
-          </p>
-          <textarea readOnly value={token} rows={6} style={{ width: '100%', fontSize: 11 }} />
-        </section>
-      )}
-    </main>
+    <ToastProvider>
+      <PlayerProvider>
+        <HashRouter>
+          <div className="app">
+            <div className="app-body">
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/discover" element={<Discover />} />
+                <Route path="/search/:query" element={<Search />} />
+                <Route path="/creator/:username" element={<Creator />} />
+                <Route path="/niche/:id" element={<NicheDetail />} />
+                <Route path="/tag/:tag" element={<TagDetail />} />
+                <Route path="/library" element={<Library />} />
+                <Route path="/downloads" element={<Downloads />} />
+                <Route path="/you" element={<You />} />
+              </Routes>
+            </div>
+            <TabBar />
+          </div>
+        </HashRouter>
+      </PlayerProvider>
+    </ToastProvider>
   )
 }

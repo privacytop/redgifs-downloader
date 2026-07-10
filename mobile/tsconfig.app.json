@@ -16,11 +16,16 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    "paths": {
+      "@redloader/core": ["../packages/core/src/index.ts"],
+      "@redloader/core/*": ["../packages/core/src/*"]
+    },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src", "../packages/core/src"]
 }
