@@ -255,8 +255,10 @@ export class RedgifsApi {
     if (opts.order) params.order = opts.order
     if (opts.page) params.page = String(opts.page)
     if (opts.verified) params.verified = 'y'
-    const data = await this.request<{ users?: any[]; creators?: any[] }>('GET', '/creators/search', params)
-    return (data.users ?? data.creators ?? []).map(toUserResult)
+    // /creators/search returns matches under `items` (the search envelope);
+    // accept the older users/creators shapes too.
+    const data = await this.request<{ items?: any[]; users?: any[]; creators?: any[] }>('GET', '/creators/search', params)
+    return (data.items ?? data.users ?? data.creators ?? []).map(toUserResult)
   }
 
   async creatorPreviews(opts: { order?: string; page?: number; count?: number }): Promise<ContentResponse> {
