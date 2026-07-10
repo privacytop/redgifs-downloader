@@ -6,6 +6,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.webkit.MimeTypeMap;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -31,6 +32,11 @@ public class MediaSaverPlugin extends Plugin {
 
   private final ExecutorService pool = Executors.newFixedThreadPool(4);
 
+  @Override
+  protected void handleOnDestroy() {
+    pool.shutdownNow();
+  }
+
   @PluginMethod
   public void download(final PluginCall call) {
     final String url = call.getString("url");
@@ -53,24 +59,36 @@ public class MediaSaverPlugin extends Plugin {
           return;
         }
 
-        String relDir = "Movies/RedLoader" + (subdir.isEmpty() ? "" : "/" + subdir);
+        // Route images and videos to the right MediaStore collection + folder —
+        // filing an image into the Video collection under Movies/ is rejected by
+        // MediaProvider and never shows in the gallery.
+        String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1) : "mp4";
+        String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext.toLowerCase());
+        boolean isImage = mime != null && mime.startsWith("image/");
+        if (mime == null) mime = isImage ? "image/jpeg" : "video/mp4";
+        Uri collection = isImage
+          ? MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+          : MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        String topDir = isImage ? Environment.DIRECTORY_PICTURES : Environment.DIRECTORY_MOVIES;
+        String relDir = topDir + "/RedLoader" + (subdir.isEmpty() ? "" : "/" + subdir);
+
         ContentResolver resolver = getContext().getContentResolver();
         ContentValues values = new ContentValues();
         values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
-        values.put(MediaStore.MediaColumns.MIME_TYPE, filename.endsWith(".jpg") ? "image/jpeg" : "video/mp4");
+        values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
 
         Uri item;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
           values.put(MediaStore.MediaColumns.RELATIVE_PATH, relDir);
           values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-          item = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+          item = resolver.insert(collection, values);
         } else {
-          // Pre-Q: write into the public Movies dir directly.
+          // Pre-Q: write into the public dir directly.
           java.io.File dir = new java.io.File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "RedLoader");
+            Environment.getExternalStoragePublicDirectory(topDir), "RedLoader");
           if (!dir.exists()) dir.mkdirs();
           values.put(MediaStore.MediaColumns.DATA, new java.io.File(dir, filename).getAbsolutePath());
-          item = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
+          item = resolver.insert(collection, values);
         }
         if (item == null) {
           call.reject("could not create gallery entry");

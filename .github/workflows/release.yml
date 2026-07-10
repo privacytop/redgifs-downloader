@@ -178,10 +178,12 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          # versionCode: major*1e6 + minor*1e3 + patch (monotonic for <1000 each)
+          # versionCode: major*1e8 + minor*1e4 + patch. The patch field is the
+          # total commit count (grows slowly), so the 10k slot has years of
+          # headroom before it could overflow into minor.
           V="${ANDROID_VERSION_NAME}"
           IFS='.' read -r MA MI PA <<< "$V"
-          export ANDROID_VERSION_CODE=$(( MA*1000000 + MI*1000 + PA ))
+          export ANDROID_VERSION_CODE=$(( MA*100000000 + MI*10000 + PA ))
           ./gradlew assembleRelease --no-daemon
           mv app/build/outputs/apk/release/app-release.apk \
              "$RUNNER_TEMP/RedLoader-${V}.apk"

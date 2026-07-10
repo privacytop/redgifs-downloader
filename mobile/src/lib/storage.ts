@@ -35,6 +35,9 @@ class MobileStorage {
   private async open(): Promise<SQLiteDBConnection> {
     if (this.db) return this.db
     if (this.opening) return this.opening
+    // Clear the cached promise if the open REJECTS, so a transient first-open
+    // failure (locked/uninitialised DB during cold start) can be retried
+    // instead of poisoning every future storage call for the whole session.
     this.opening = (async () => {
       const ret = await this.conn.checkConnectionsConsistency().catch(() => ({ result: false }))
       const isConn = (await this.conn.isConnection(DB_NAME, false)).result
@@ -47,6 +50,9 @@ class MobileStorage {
       this.db = db
       return db
     })()
+    this.opening.catch(() => {
+      this.opening = null
+    })
     return this.opening
   }
 

@@ -4,7 +4,11 @@ apply plugin: 'com.android.application'
 // secrets / the release version). When the keystore env is absent — local dev,
 // forks without secrets — the release build falls back to the debug key so
 // `assembleRelease` still produces an installable APK.
+// CI passes an EMPTY string (not unset) when there's no keystore secret, and
+// System.getenv returns "" — not null — for a present-but-empty var. Normalise
+// so the "" case takes the debug-key fallback just like a genuinely unset var.
 def releaseKeystore = System.getenv('ANDROID_KEYSTORE_FILE')
+if (releaseKeystore != null && releaseKeystore.trim().isEmpty()) releaseKeystore = null
 
 android {
     namespace "com.redloader.spike"
