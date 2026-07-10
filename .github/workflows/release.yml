@@ -1,9 +1,10 @@
 name: Release
 
 # Runs on:
-#   1. Every push to main -> auto-releases the newest STABLE v* tag with its
-#      patch advanced by the commit count since it (monotonic, idempotent)
-#   2. A version tag (git tag v4.10.0 && git push origin v4.10.0) -> that version
+#   1. Every push to main -> auto-releases 4.<push>.<commits>: minor = the
+#      newest stable tag's minor + 1 (one bump per release, i.e. a push
+#      counter that can't reset), patch = total commit count on HEAD
+#   2. A version tag (git tag v4.50.0 && git push origin v4.50.0) -> that version
 #   3. Manually from the Actions tab -> "Release" -> "Run workflow"
 #
 # Structure: a `prepare` job computes the version ONCE and creates the GitHub
@@ -30,7 +31,6 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.ver.outputs.version }}
-      skip: ${{ steps.ver.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,42 +41,46 @@ jobs:
         id: ver
         shell: bash
         run: |
-          SKIP=false
+          TAG_AT_HEAD=$(git tag --points-at HEAD --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             V="${GITHUB_REF_NAME#v}"
-          elif git tag --points-at HEAD --list 'v*' | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            # HEAD already carries a stable version tag: its own tag run (or a
-            # previous run) publishes that exact version — don't double-release.
-            V="0.0.0"
-            SKIP=true
-            echo "HEAD is already tagged — skipping the branch release."
+          elif [ -n "$TAG_AT_HEAD" ]; then
+            # HEAD is already tagged (a previous run of this commit released
+            # it, or a human tagged it): REUSE that version instead of minting
+            # a new one — the release-create below is idempotent, so re-runs
+            # can repair a release that's missing one OS's artifacts.
+            V="${TAG_AT_HEAD#v}"
+            echo "HEAD already tagged $TAG_AT_HEAD — reusing its version."
           else
-            # Newest STABLE tag only: prerelease suffixes (v4.10.0-rc.1) sort
-            # above their release in versionsort AND break the patch arithmetic.
+            # 4.<push>.<commits> — the "push number" is the newest stable
+            # tag's minor + 1 rather than github.run_number, which silently
+            # resets when the workflow file is renamed/recreated. Every
+            # release bumps the minor by one, so it counts pushes; the patch
+            # is the total commit count on HEAD (monotonic, and identical for
+            # every re-run of the same commit). Prerelease suffixes
+            # (v4.10.0-rc.1) are filtered: versionsort ranks them above their
+            # release and their patch field breaks the arithmetic.
             LATEST=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
-            if [ -n "$LATEST" ] && git rev-parse -q --verify "$LATEST^{commit}" >/dev/null; then
+            if [ -n "$LATEST" ]; then
               BASE=${LATEST#v}
               MAJOR=${BASE%%.*}
               REST=${BASE#*.}
-              MINOR=${REST%%.*}
-              PATCH=${BASE##*.}
-              N=$(git rev-list "$LATEST"..HEAD --count)
-              V="$MAJOR.$MINOR.$((PATCH + N))"
+              MINOR=$(( ${REST%%.*} + 1 ))
             else
-              # No stable tag reachable (fresh fork / wiped tags): still emit a
-              # monotonic version instead of crashing on a missing ref.
-              V="4.9.$(git rev-list HEAD --count)"
+              # No stable tag reachable (fresh fork / wiped tags): keep going
+              # from the known floor instead of crashing on a missing ref.
+              MAJOR=4
+              MINOR=10
             fi
+            V="$MAJOR.$MINOR.$(git rev-list HEAD --count)"
           fi
-          echo "Version: $V (skip=$SKIP)"
+          echo "Version: $V"
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
 
       # Create the release once, before any build exists — the matrix jobs only
       # upload into it, so two runners can't race to create the same release
       # (HTTP 422) and re-runs of a failed OS can still repair the release.
       - name: Create release
-        if: steps.ver.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -91,7 +95,6 @@ jobs:
 
   build:
     needs: prepare
-    if: needs.prepare.outputs.skip != 'true'
     strategy:
       fail-fast: false
       matrix:
