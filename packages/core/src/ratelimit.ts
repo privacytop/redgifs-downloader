@@ -6,8 +6,13 @@
 export class RateLimiter {
   private lastRequest = 0
   private backoffUntil = 0
+  private minIntervalMs: number
 
-  constructor(private minIntervalMs = 120) {}
+  // Field assigned in the body (not a parameter property) so this class is
+  // erasable-syntax-clean and compiles under the mobile app's strict tsconfig.
+  constructor(minIntervalMs = 120) {
+    this.minIntervalMs = minIntervalMs
+  }
 
   async wait(): Promise<void> {
     const now = Date.now()
