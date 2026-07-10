@@ -9,3 +9,8 @@ redgifs-dl.json
 RedGifs - */
 docs/superpowers/
 desktop/release/
+mobile/node_modules/
+mobile/dist/
+mobile/android/.gradle/
+mobile/android/app/build/
+mobile/.spike-env
