@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../context/toast'
+import { useCachedResource } from '../hooks/useCachedResource'
 import { formatCount } from '../lib/format'
 import type { Niche, UserResult } from '@redloader/core'
 
@@ -9,64 +10,23 @@ const MAX_CREATORS = 12
 
 /**
  * Discover landing: a search box, a "Trending creators" list, and a "Niches"
- * chip row. Creators and niches are each fetched once on mount (not paged) —
- * this screen is a jumping-off point, so tapping a creator or niche routes to
- * its own paged detail screen. Search routes to /search/:query on Enter.
+ * chip row. Creators and niches are each cached (stale-while-revalidate) so
+ * switching to this tab paints instantly instead of flashing a loader; tapping
+ * a creator or niche routes to its own paged detail screen.
  */
 export default function Discover(): React.JSX.Element {
   const navigate = useNavigate()
   const notify = useToast()
   const [query, setQuery] = useState('')
 
-  const [creators, setCreators] = useState<UserResult[]>([])
-  const [creatorsLoading, setCreatorsLoading] = useState(true)
-  const [creatorsError, setCreatorsError] = useState<string | null>(null)
-
-  const [niches, setNiches] = useState<Niche[]>([])
-  const [nichesLoading, setNichesLoading] = useState(true)
-  const [nichesError, setNichesError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    setCreatorsLoading(true)
-    setCreatorsError(null)
-    api
-      // `order=trending` returns an empty cursor-based set for creators (same
-      // quirk as gifs/search); `best` actually populates.
-      .searchCreators({ order: 'best', page: 1 })
-      .then((rows) => {
-        if (alive) setCreators(rows.slice(0, MAX_CREATORS))
-      })
-      .catch((e: unknown) => {
-        if (alive) setCreatorsError(e instanceof Error ? e.message : String(e))
-      })
-      .finally(() => {
-        if (alive) setCreatorsLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  useEffect(() => {
-    let alive = true
-    setNichesLoading(true)
-    setNichesError(null)
-    api
-      .getNichesTrending()
-      .then((rows) => {
-        if (alive) setNiches(rows)
-      })
-      .catch((e: unknown) => {
-        if (alive) setNichesError(e instanceof Error ? e.message : String(e))
-      })
-      .finally(() => {
-        if (alive) setNichesLoading(false)
-      })
-    return () => {
-      alive = false
-    }
-  }, [])
+  // `order=trending` returns an empty cursor set for creators (gifs/search
+  // quirk); `best` populates.
+  const creatorsRes = useCachedResource<UserResult[]>('discover:creators', () =>
+    api.searchCreators({ order: 'best', page: 1 }).then((r) => r.slice(0, MAX_CREATORS))
+  )
+  const nichesRes = useCachedResource<Niche[]>('discover:niches', () => api.getNichesTrending())
+  const creators = creatorsRes.data ?? []
+  const niches = nichesRes.data ?? []
 
   const submitSearch = (): void => {
     const q = query.trim()
@@ -87,7 +47,6 @@ export default function Discover(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Discover</div>
       <h1 className="title">Discover</h1>
 
       <div style={{ margin: '14px 0 4px' }}>
@@ -106,12 +65,12 @@ export default function Discover(): React.JSX.Element {
       </div>
 
       <div className="section-label">Trending creators</div>
-      {creatorsLoading ? (
+      {creators.length === 0 && creatorsRes.loading ? (
         <div className="loading">Loading creators…</div>
-      ) : creatorsError ? (
+      ) : creators.length === 0 && creatorsRes.error ? (
         <div className="empty">
           <div className="empty-msg">Couldn’t load creators</div>
-          <div className="empty-sub">{creatorsError}</div>
+          <div className="empty-sub">{creatorsRes.error}</div>
         </div>
       ) : creators.length === 0 ? (
         <div className="empty">
@@ -150,12 +109,12 @@ export default function Discover(): React.JSX.Element {
       )}
 
       <div className="section-label">Niches</div>
-      {nichesLoading ? (
+      {niches.length === 0 && nichesRes.loading ? (
         <div className="loading">Loading niches…</div>
-      ) : nichesError ? (
+      ) : niches.length === 0 && nichesRes.error ? (
         <div className="empty">
           <div className="empty-msg">Couldn’t load niches</div>
-          <div className="empty-sub">{nichesError}</div>
+          <div className="empty-sub">{nichesRes.error}</div>
         </div>
       ) : niches.length === 0 ? (
         <div className="empty">

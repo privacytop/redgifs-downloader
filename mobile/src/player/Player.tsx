@@ -4,7 +4,10 @@ import type { Content } from '@redloader/core'
 import type { PlaySource } from './PlayerProvider'
 import { formatViews, formatDuration } from '../lib/format'
 import { useToast } from '../context/toast'
-import { api } from '../lib/api'
+import { useSettings } from '../context/settings'
+import { useAuth } from '../context/auth'
+import { isLiked, loadLikedIds, setLike, LIKE_EVENT, type LikeChange } from '../lib/likes'
+import { FOLLOW_EVENT, isFollowing, loadFollows, setFollow, type FollowChange } from '../lib/follows'
 import {
   IconBookmark,
   IconDownload,
@@ -12,32 +15,35 @@ import {
   IconMuted,
   IconPlay,
   IconSound,
+  IconUsers,
   IconX
 } from '../components/icons'
 
 interface PlayerProps {
   source: PlaySource
   onClose: () => void
-  /** Save the current clip (phase 4 wires the download queue). */
   onSave?: (c: Content) => void
-  /** Open the add-to-collection sheet (phase 3). */
   onCollect?: (c: Content) => void
 }
 
-// Vertical drag past this fraction of the screen commits a clip change.
 const SWIPE_COMMIT = 0.18
+const WHEEL_STEP_PX = 60
+const STEP_LOCK_MS = 320
 const PREFETCH_WITHIN = 3
 const MUTE_KEY = 'player:muted'
+const DOUBLE_TAP_MS = 280
 
 /**
- * Full-screen swipe player: drag up/down to move between clips (TikTok-style),
- * tap to pause, side rail for like/save/collection, a mute toggle and a bottom
- * scrubber. The current clip and its neighbours are mounted so the next clip is
- * already buffering when you swipe onto it.
+ * Full-screen swipe/wheel player: drag or scroll-wheel up/down to move between
+ * clips, single-tap does what Settings says (pause or mute), double-tap likes.
+ * Like state is persisted across clips via the shared likes cache, and the rail
+ * carries like / mute / follow / save / add-to-collection.
  */
 export default function Player({ source, onClose, onSave, onCollect }: PlayerProps): React.JSX.Element {
   const notify = useToast()
   const navigate = useNavigate()
+  const { tapBehavior } = useSettings()
+  const { authenticated } = useAuth()
 
   const [items, setItems] = useState<Content[]>(source.items)
   const [index, setIndex] = useState(
@@ -52,8 +58,10 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     }
   })
   const [liked, setLiked] = useState(false)
+  const [following, setFollowing] = useState(false)
   const [progress, setProgress] = useState(0)
   const [drag, setDrag] = useState(0)
+  const [heartBurst, setHeartBurst] = useState(false)
 
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
   const itemsRef = useRef(items)
@@ -63,6 +71,9 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   const loadingRef = useRef(false)
   const wantPlayingRef = useRef(true)
   const startY = useRef<number | null>(null)
+  const wheelAccRef = useRef(0)
+  const stepLockRef = useRef(false)
+  const lastTapRef = useRef(0)
 
   const current = items[index]
 
@@ -95,19 +106,26 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
 
   const step = useCallback(
     (delta: number): void => {
+      if (stepLockRef.current) return
       const next = Math.min(Math.max(indexRef.current + delta, 0), itemsRef.current.length - 1)
       if (next === indexRef.current) return
       wantPlayingRef.current = true
       setIndex(next)
       if (delta > 0) void maybeLoadMore(next)
+      stepLockRef.current = true
+      window.setTimeout(() => {
+        stepLockRef.current = false
+        wheelAccRef.current = 0
+      }, STEP_LOCK_MS)
     },
     [maybeLoadMore]
   )
 
-  // Reset per-clip state + pause the others so exactly one clip plays.
+  // Per-clip reset + start playback; like reflects the shared cache.
   useEffect(() => {
     setProgress(0)
-    setLiked(false)
+    setLiked(current ? isLiked(current.id) : false)
+    if (current) setFollowing(isFollowing(current.username))
     for (const [id, v] of videoRefs.current) {
       if (id !== current?.id) {
         v.pause()
@@ -121,6 +139,35 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id])
+
+  // Load the shared caches once, then reflect them; listen for changes so a
+  // like/follow made anywhere (or on revisiting a clip) shows here.
+  useEffect(() => {
+    void loadLikedIds().then(() => {
+      const c = itemsRef.current[indexRef.current]
+      if (c) setLiked(isLiked(c.id))
+    })
+    void loadFollows().then(() => {
+      const c = itemsRef.current[indexRef.current]
+      if (c) setFollowing(isFollowing(c.username))
+    })
+    const onLike = (e: Event): void => {
+      const d = (e as CustomEvent<LikeChange>).detail
+      const c = itemsRef.current[indexRef.current]
+      if (c && c.id === d.gifId) setLiked(d.liked)
+    }
+    const onFollow = (e: Event): void => {
+      const d = (e as CustomEvent<FollowChange>).detail
+      const c = itemsRef.current[indexRef.current]
+      if (c && c.username.toLowerCase() === d.username.toLowerCase()) setFollowing(d.following)
+    }
+    window.addEventListener(LIKE_EVENT, onLike)
+    window.addEventListener(FOLLOW_EVENT, onFollow)
+    return () => {
+      window.removeEventListener(LIKE_EVENT, onLike)
+      window.removeEventListener(FOLLOW_EVENT, onFollow)
+    }
+  }, [])
 
   useEffect(() => {
     const v = currentVideo()
@@ -147,15 +194,59 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   const toggleLike = useCallback(async (): Promise<void> => {
     if (!current) return
     const next = !liked
-    setLiked(next)
     try {
-      if (next) await api.likeGif(current.id)
-      else await api.unlikeGif(current.id)
+      await setLike(current.id, next)
     } catch (e) {
-      setLiked(!next)
-      notify('Sign in to like — ' + (e instanceof Error ? e.message : String(e)), 'error')
+      notify(
+        (authenticated ? 'Like failed: ' : 'Sign in to like — ') +
+          (e instanceof Error ? e.message : String(e)),
+        'error'
+      )
     }
-  }, [current, liked, notify])
+  }, [current, liked, notify, authenticated])
+
+  const likeFromDoubleTap = useCallback((): void => {
+    if (!current || liked) {
+      setHeartBurst(true)
+      window.setTimeout(() => setHeartBurst(false), 600)
+      return
+    }
+    setHeartBurst(true)
+    window.setTimeout(() => setHeartBurst(false), 600)
+    void toggleLike()
+  }, [current, liked, toggleLike])
+
+  const toggleFollow = useCallback(async (): Promise<void> => {
+    if (!current) return
+    const next = !following
+    try {
+      await setFollow(current.username, next)
+    } catch (e) {
+      notify(
+        (authenticated ? 'Follow failed: ' : 'Sign in to follow — ') +
+          (e instanceof Error ? e.message : String(e)),
+        'error'
+      )
+    }
+  }, [current, following, notify, authenticated])
+
+  const onVideoTap = useCallback((): void => {
+    const now = Date.now()
+    if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+      lastTapRef.current = 0
+      likeFromDoubleTap()
+    } else {
+      lastTapRef.current = now
+      window.setTimeout(() => {
+        // If no second tap arrived, this was a single tap.
+        if (lastTapRef.current !== 0 && Date.now() - lastTapRef.current >= DOUBLE_TAP_MS - 20) {
+          lastTapRef.current = 0
+          if (tapBehavior === 'mute') setMuted((m) => !m)
+          else togglePlay()
+        }
+      }, DOUBLE_TAP_MS)
+    }
+  }, [likeFromDoubleTap, tapBehavior, togglePlay])
 
   const goCreator = (): void => {
     if (!current) return
@@ -163,7 +254,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     navigate(`/creator/${encodeURIComponent(current.username)}`)
   }
 
-  // --- touch swipe ----------------------------------------------------------
+  // --- gestures -------------------------------------------------------------
   const onTouchStart = (e: React.TouchEvent): void => {
     startY.current = e.touches[0].clientY
   }
@@ -179,6 +270,30 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     startY.current = null
     setDrag(0)
   }
+  const onWheel = (e: React.WheelEvent): void => {
+    if (stepLockRef.current) return
+    wheelAccRef.current += e.deltaY
+    if (Math.abs(wheelAccRef.current) >= WHEEL_STEP_PX) {
+      const dir = wheelAccRef.current > 0 ? 1 : -1
+      wheelAccRef.current = 0
+      step(dir)
+    }
+  }
+
+  // Keyboard for desktop-style testing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+      else if (e.key === 'ArrowDown') step(1)
+      else if (e.key === 'ArrowUp') step(-1)
+      else if (e.key === ' ') {
+        e.preventDefault()
+        togglePlay()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose, step, togglePlay])
 
   if (!current) {
     return (
@@ -190,7 +305,6 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     )
   }
 
-  // Mount current ± 1 so the next clip is already buffering.
   const first = Math.max(0, index - 1)
   const slides = items.slice(first, Math.min(items.length, index + 2))
 
@@ -200,6 +314,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
+      onWheel={onWheel}
     >
       <div className="player-deck">
         {slides.map((c, s) => {
@@ -211,7 +326,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
               key={c.id}
               className="player-slide"
               style={{
-                transform: `translateY(calc(${offset}% + ${isCurrent || i === index + 1 || i === index - 1 ? drag : 0}px))`,
+                transform: `translateY(calc(${offset}% + ${drag}px))`,
                 transition: startY.current !== null ? 'none' : undefined
               }}
             >
@@ -228,7 +343,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
                 muted={!isCurrent || muted}
                 preload="auto"
                 autoPlay={isCurrent}
-                onClick={isCurrent ? togglePlay : undefined}
+                onClick={isCurrent ? onVideoTap : undefined}
                 onTimeUpdate={
                   isCurrent
                     ? (e) => {
@@ -247,6 +362,12 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
 
       <div className="player-scrim" />
 
+      {heartBurst && (
+        <div className="player-heart-burst" aria-hidden="true">
+          <IconHeart style={{ fill: 'var(--ember)', stroke: 'var(--ember)' }} />
+        </div>
+      )}
+
       {!playing && (
         <div className="player-paused" aria-hidden="true">
           <IconPlay />
@@ -263,37 +384,24 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       </div>
 
       <div className="player-rail">
-        <div style={{ textAlign: 'center' }}>
-          <button
-            className={`player-rail-btn ${liked ? 'on' : ''}`}
-            onClick={() => void toggleLike()}
-            aria-label="Like"
-          >
-            <IconHeart />
-          </button>
-          <div className="player-rail-label">Like</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <button className="player-rail-btn" onClick={() => setMuted((m) => !m)} aria-label="Mute">
-            {muted ? <IconMuted /> : <IconSound />}
-          </button>
-          <div className="player-rail-label">{muted ? 'Muted' : 'Sound'}</div>
-        </div>
-        {onSave && (
-          <div style={{ textAlign: 'center' }}>
-            <button className="player-rail-btn" onClick={() => onSave(current)} aria-label="Save">
-              <IconDownload />
-            </button>
-            <div className="player-rail-label">Save</div>
-          </div>
-        )}
+        <RailBtn label="Like" on={liked} onClick={() => void toggleLike()}>
+          <IconHeart style={liked ? { fill: 'var(--ember)', stroke: 'var(--ember)' } : undefined} />
+        </RailBtn>
+        <RailBtn label={muted ? 'Muted' : 'Sound'} onClick={() => setMuted((m) => !m)}>
+          {muted ? <IconMuted /> : <IconSound />}
+        </RailBtn>
+        <RailBtn label={following ? 'Following' : 'Follow'} on={following} onClick={() => void toggleFollow()}>
+          <IconUsers />
+        </RailBtn>
         {onCollect && (
-          <div style={{ textAlign: 'center' }}>
-            <button className="player-rail-btn" onClick={() => onCollect(current)} aria-label="Collect">
-              <IconBookmark />
-            </button>
-            <div className="player-rail-label">Collect</div>
-          </div>
+          <RailBtn label="Collect" onClick={() => onCollect(current)}>
+            <IconBookmark />
+          </RailBtn>
+        )}
+        {onSave && (
+          <RailBtn label="Save" onClick={() => onSave(current)}>
+            <IconDownload />
+          </RailBtn>
         )}
       </div>
 
@@ -307,6 +415,27 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       <div className="player-scrub">
         <i style={{ width: `${Math.round(progress * 100)}%` }} />
       </div>
+    </div>
+  )
+}
+
+function RailBtn({
+  label,
+  on,
+  onClick,
+  children
+}: {
+  label: string
+  on?: boolean
+  onClick: () => void
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <button className={`player-rail-btn ${on ? 'on' : ''}`} onClick={onClick} aria-label={label}>
+        {children}
+      </button>
+      <div className="player-rail-label">{label}</div>
     </div>
   )
 }

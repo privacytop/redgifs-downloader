@@ -58,7 +58,6 @@ export default function Search(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Search</div>
       <h1 className="title">{query || 'Search'}</h1>
 
       {creators.length > 0 && (

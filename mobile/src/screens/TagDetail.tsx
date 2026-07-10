@@ -18,7 +18,11 @@ export default function TagDetail(): React.JSX.Element {
   const tag = decodeURIComponent(raw ?? '')
   const [order, setOrder] = useState<Order>('latest')
 
-  const feed = usePagedFeed((p) => api.searchGifs({ tags: tag, order, page: p }), [tag, order])
+  const feed = usePagedFeed(
+    (p) => api.searchGifs({ tags: tag, order, page: p }),
+    [tag, order],
+    `feed:tag:${tag}:${order}`
+  )
 
   const open = (_c: Content, index: number): void => {
     player.open({ items: feed.items, index, label: `#${tag}`, loadMore: feed.loadMoreItems })
@@ -26,7 +30,6 @@ export default function TagDetail(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Tag</div>
       <h1 className="title">#{tag}</h1>
       <div style={{ margin: '12px 0 18px' }}>
         <div className="seg" role="group" aria-label="Sort">

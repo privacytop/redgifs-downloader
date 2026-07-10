@@ -7,6 +7,7 @@ import { useAuth } from '../context/auth'
 import { useToast } from '../context/toast'
 import { usePlayer } from '../player/PlayerProvider'
 import { usePagedFeed } from '../hooks/usePagedFeed'
+import { useCachedResource } from '../hooks/useCachedResource'
 import MediaGrid from '../components/MediaGrid'
 import { formatCount } from '../lib/format'
 
@@ -20,7 +21,6 @@ export default function Library(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Library</div>
       <h1 className="title">Library</h1>
       <div style={{ margin: '12px 0 18px' }}>
         <div className="seg" role="group" aria-label="Library view">
@@ -144,32 +144,14 @@ function AllMedia(): React.JSX.Element {
   )
 }
 
-/** The user's collections as a cover-tile grid. */
+/** The user's collections as a cover-tile grid (cached, no reload flash). */
 function Collections(): React.JSX.Element {
   const navigate = useNavigate()
-  const notify = useToast()
-  const [cols, setCols] = useState<Collection[] | null>(null)
+  const { data, loading } = useCachedResource<Collection[]>('collections', () => api.getCollections())
+  const cols = data ?? []
 
-  useEffect(() => {
-    let alive = true
-    api
-      .getCollections()
-      .then((c) => {
-        if (alive) setCols(c)
-      })
-      .catch((e) => {
-        if (alive) {
-          setCols([])
-          notify('Couldn’t load collections: ' + (e instanceof Error ? e.message : String(e)), 'error')
-        }
-      })
-    return () => {
-      alive = false
-    }
-  }, [notify])
-
-  if (cols === null) return <div className="loading">Loading…</div>
-  if (!cols.length) return <div className="empty"><div className="empty-msg">No collections yet</div></div>
+  if (cols.length === 0 && loading) return <div className="loading">Loading…</div>
+  if (cols.length === 0) return <div className="empty"><div className="empty-msg">No collections yet</div></div>
 
   return (
     <div className="tile-grid">
@@ -202,7 +184,7 @@ function Collections(): React.JSX.Element {
 /** The user's liked feed. */
 function Likes(): React.JSX.Element {
   const player = usePlayer()
-  const feed = usePagedFeed((p) => api.getLikes(p), [])
+  const feed = usePagedFeed((p) => api.getLikes(p), [], 'feed:likes')
 
   const open = (_c: Content, index: number): void => {
     player.open({ items: feed.items, index, label: 'Likes', loadMore: feed.loadMoreItems })

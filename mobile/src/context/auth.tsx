@@ -3,6 +3,8 @@ import { Preferences } from '@capacitor/preferences'
 import { decodeJwt, isUserToken } from '@redloader/core'
 import { AuthCapture } from '../plugins/authCapture'
 import { api } from '../lib/api'
+import { resetLikes } from '../lib/likes'
+import { resetFollows } from '../lib/follows'
 
 const TOKEN_KEY = 'redgifs_user_token'
 
@@ -60,6 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
   const logout = async (): Promise<void> => {
     api.clearUserToken()
     setUsername(null)
+    resetLikes()
+    resetFollows()
     await Preferences.remove({ key: TOKEN_KEY })
   }
 

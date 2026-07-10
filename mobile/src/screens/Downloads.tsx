@@ -12,7 +12,6 @@ export default function Downloads(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Library</div>
       <h1 className="title">Downloads</h1>
       <hr className="rule" />
 

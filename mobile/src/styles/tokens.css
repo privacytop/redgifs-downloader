@@ -470,6 +470,21 @@ button { font-family: inherit; color: inherit; }
   pointer-events: none;
 }
 .player-paused svg { width: 66px; height: 66px; color: rgba(245, 239, 230, 0.9); }
+.player-heart-burst {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.player-heart-burst svg { width: 120px; height: 120px; animation: heart-pop 0.6s var(--ease); }
+@keyframes heart-pop {
+  0% { transform: scale(0.3); opacity: 0; }
+  30% { transform: scale(1.15); opacity: 1; }
+  70% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.1); opacity: 0; }
+}
 .player-scrub {
   position: absolute;
   left: 0;

@@ -20,7 +20,6 @@ export default function CollectionDetail(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Collection</div>
       <h1 className="title">{title}</h1>
       <hr className="rule" />
       {feed.error && feed.items.length === 0 ? (

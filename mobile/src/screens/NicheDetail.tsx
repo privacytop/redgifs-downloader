@@ -25,7 +25,7 @@ export default function NicheDetail(): React.JSX.Element {
   const title = (location.state as { title?: string } | null)?.title ?? 'Niche'
   const [order, setOrder] = useState<Order>('best')
 
-  const feed = usePagedFeed((p) => api.getNicheGifs(id, order, p), [id, order])
+  const feed = usePagedFeed((p) => api.getNicheGifs(id, order, p), [id, order], `feed:niche:${id}:${order}`)
 
   const open = (_c: Content, index: number): void => {
     player.open({ items: feed.items, index, label: title, loadMore: feed.loadMoreItems })
@@ -33,7 +33,6 @@ export default function NicheDetail(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Niche</div>
       <h1 className="title">{title}</h1>
 
       <div style={{ margin: '12px 0 18px' }}>

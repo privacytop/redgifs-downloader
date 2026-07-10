@@ -1,9 +1,11 @@
 import { HashRouter, Route, Routes } from 'react-router-dom'
 import { ToastProvider } from './context/toast'
 import { AuthProvider } from './context/auth'
+import { SettingsProvider } from './context/settings'
 import { DownloadsProvider } from './context/downloads'
 import { PlayerProvider } from './player/PlayerProvider'
 import TabBar from './components/TabBar'
+import Settings from './screens/Settings'
 import Home from './screens/Home'
 import Discover from './screens/Discover'
 import Search from './screens/Search'
@@ -20,6 +22,7 @@ export default function App(): React.JSX.Element {
   // provider) uses useNavigate — it must be inside the Router.
   return (
     <ToastProvider>
+      <SettingsProvider>
       <AuthProvider>
         <DownloadsProvider>
           <HashRouter>
@@ -37,6 +40,7 @@ export default function App(): React.JSX.Element {
                     <Route path="/collection/:id" element={<CollectionDetail />} />
                     <Route path="/downloads" element={<Downloads />} />
                     <Route path="/you" element={<You />} />
+                    <Route path="/settings" element={<Settings />} />
                   </Routes>
                 </div>
                 <TabBar />
@@ -45,6 +49,7 @@ export default function App(): React.JSX.Element {
           </HashRouter>
         </DownloadsProvider>
       </AuthProvider>
+      </SettingsProvider>
     </ToastProvider>
   )
 }

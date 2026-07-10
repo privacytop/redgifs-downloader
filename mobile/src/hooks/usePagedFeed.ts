@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Content, ContentResponse } from '@redloader/core'
+import { readCache, writeCache } from '../lib/cache'
 
 export interface PagedFeed {
   items: Content[]
@@ -14,14 +15,21 @@ export interface PagedFeed {
 
 /**
  * One paginator driving both the grid and the swipe player. Fetches pages via
- * `fetcher`, dedupes by id, and resets when `deps` change. The player is opened
- * with `items` + `loadMoreItems` so swiping past the end keeps loading.
+ * `fetcher`, dedupes by id, and resets when `deps` change. When a `cacheKey` is
+ * given, page 1 is persisted and painted instantly on the next visit
+ * (stale-while-revalidate) so switching tabs never flashes an empty loader.
  */
 export function usePagedFeed(
   fetcher: (page: number) => Promise<ContentResponse>,
-  deps: unknown[] = []
+  deps: unknown[] = [],
+  cacheKey?: string
 ): PagedFeed {
-  const [items, setItems] = useState<Content[]>([])
+  const cacheKeyRef = useRef(cacheKey)
+  cacheKeyRef.current = cacheKey
+
+  const [items, setItems] = useState<Content[]>(() =>
+    cacheKey ? (readCache<Content[]>(cacheKey) ?? []) : []
+  )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const pageRef = useRef(0)
@@ -45,7 +53,12 @@ export function usePagedFeed(
       pagesRef.current = r.pages || pageRef.current
       const fresh = (r.contents || []).filter((c) => !seen.current.has(c.id))
       fresh.forEach((c) => seen.current.add(c.id))
-      setItems((prev) => (next === 1 ? fresh : [...prev, ...fresh]))
+      if (next === 1) {
+        setItems(fresh)
+        if (cacheKeyRef.current) writeCache(cacheKeyRef.current, fresh)
+      } else if (fresh.length) {
+        setItems((prev) => [...prev, ...fresh])
+      }
       return fresh
     } catch (e) {
       if (myRun === runId.current) setError(e instanceof Error ? e.message : String(e))
@@ -68,7 +81,8 @@ export function usePagedFeed(
     pagesRef.current = 1
     seen.current = new Set()
     loadingRef.current = false
-    setItems([])
+    // Paint the cached page-1 immediately (no empty flash), then revalidate.
+    setItems(cacheKeyRef.current ? (readCache<Content[]>(cacheKeyRef.current) ?? []) : [])
     setError(null)
     void loadNextRef.current()
   }, [])

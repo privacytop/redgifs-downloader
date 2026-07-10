@@ -15,7 +15,7 @@ export default function Home(): React.JSX.Element {
   const player = usePlayer()
   const [tab, setTab] = useState<Tab>('trending')
 
-  const feed = usePagedFeed((p) => api.getTrending(p), [tab])
+  const feed = usePagedFeed((p) => api.getTrending(p), [tab], `feed:${tab}`)
 
   const open = (_c: Content, index: number): void => {
     player.open({ items: feed.items, index, label: 'Trending', loadMore: feed.loadMoreItems })
@@ -23,7 +23,6 @@ export default function Home(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="kicker">Home</div>
       <h1 className="title">{tab === 'trending' ? 'Trending' : 'For you'}</h1>
       <div style={{ margin: '12px 0 18px' }}>
         <div className="seg" role="group" aria-label="Feed">
