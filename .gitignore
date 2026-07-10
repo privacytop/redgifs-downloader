@@ -16,3 +16,4 @@ mobile/android/app/build/
 mobile/.spike-env
 packages/*/node_modules/
 .idea/
+mobile/RUNBOOK.md
