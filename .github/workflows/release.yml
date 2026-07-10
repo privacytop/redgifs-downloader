@@ -14,9 +14,9 @@ name: Release
 #   3. workflow_dispatch -> builds both tracks.
 #
 # Per track a `*-prepare` job computes the version ONCE (own tag's minor + 1,
-# patch = commit count touching that track's paths) and creates the release up
-# front; the build job(s) only upload into it (so re-runs / slow runners can't
-# leave a release missing an artifact). Versions derive from git tags, never
+# patch = commit count touching that track's paths). The Android release is
+# created by the build job only after the APK compiles, so a failed build never
+# leaves an empty release behind. Versions derive from git tags, never
 # github.run_number (that silently resets when the workflow file is recreated).
 on:
   push:
@@ -184,18 +184,6 @@ jobs:
           echo "Android version: $V"
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
-      - name: Create android release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          V="${{ steps.ver.outputs.version }}"
-          if gh release view "android-v$V" > /dev/null 2>&1; then
-            echo "android-v$V exists — build will (re)upload."
-          else
-            gh release create "android-v$V" --title "Android v$V" \
-              --notes "Automated Android release v$V" --target "$GITHUB_SHA"
-          fi
-
   android-build:
     needs: android-prepare
     runs-on: ubuntu-22.04
@@ -243,7 +231,15 @@ jobs:
           export ANDROID_VERSION_CODE=$(( MA*100000000 + MI*10000 + PA ))
           ./gradlew assembleRelease --no-daemon
           mv app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/RedLoader-${V}.apk"
-      - name: Upload APK to the release
+      - name: Create release + upload APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "android-v${{ needs.android-prepare.outputs.version }}" "$RUNNER_TEMP/RedLoader-${{ needs.android-prepare.outputs.version }}.apk" --clobber
+        run: |
+          # Reached only after assembleRelease succeeded — so the release is
+          # created here, never before a successful compile.
+          V="${{ needs.android-prepare.outputs.version }}"
+          if ! gh release view "android-v$V" >/dev/null 2>&1; then
+            gh release create "android-v$V" --title "Android v$V" \
+              --notes "Automated Android release v$V" --target "$GITHUB_SHA"
+          fi
+          gh release upload "android-v$V" "$RUNNER_TEMP/RedLoader-$V.apk" --clobber
