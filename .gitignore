@@ -17,3 +17,6 @@ mobile/.spike-env
 packages/*/node_modules/
 .idea/
 mobile/RUNBOOK.md
+keys/
+*.jks
+*.keystore
