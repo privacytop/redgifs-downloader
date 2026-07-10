@@ -5,10 +5,13 @@ import type { Storage } from './storage'
 import { decodeJwt, isUserToken } from './jwt'
 
 const PARTITION = 'persist:redgifs'
-// The SPA serves /login as a client route that opens the login modal directly
-// (it falls back to the app shell if the route is unknown, so this is safe).
+// The SPA's sign-in route. This has moved before: it was /login (which opened
+// a modal) until mid-2026, when the site replaced it with a dedicated
+// /auth/signin page (Kinde components); /login now silently renders the normal
+// feed. Verified live 2026-07-10 — if sign-in ever "opens the normal page"
+// again, re-check what the site header's Log in button navigates to.
 // Token capture happens on the first authed api.redgifs.com request after login.
-const LOGIN_URL = 'https://www.redgifs.com/login'
+const LOGIN_URL = 'https://www.redgifs.com/auth/signin'
 // For silent refresh we just load the site; if the Kinde SSO cookie is still
 // valid the SPA re-authenticates on its own and fires authed API calls.
 const HOME_URL = 'https://www.redgifs.com/'
