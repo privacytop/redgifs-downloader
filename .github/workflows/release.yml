@@ -92,7 +92,9 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             V="${GITHUB_REF_NAME#v}"
           else
-            TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+            # `|| true`: with pipefail set, a no-match grep (no tags yet) or head
+            # closing the pipe (SIGPIPE) would otherwise abort the step.
+            TAG=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
             if [ -n "$TAG" ]; then
               BASE=${TAG#v}; MAJOR=${BASE%%.*}; REST=${BASE#*.}; MINOR=$(( ${REST%%.*} + 1 ))
             else
@@ -168,7 +170,9 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             V="${GITHUB_REF_NAME#android-v}"
           else
-            TAG=$(git tag --list 'android-v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^android-v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+            # `|| true`: with pipefail set, a no-match grep (no tags yet) or head
+            # closing the pipe (SIGPIPE) would otherwise abort the step.
+            TAG=$(git tag --list 'android-v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | grep -E '^android-v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
             if [ -n "$TAG" ]; then
               BASE=${TAG#android-v}; MAJOR=${BASE%%.*}; REST=${BASE#*.}; MINOR=$(( ${REST%%.*} + 1 ))
             else
