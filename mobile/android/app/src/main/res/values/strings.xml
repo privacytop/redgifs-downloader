@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RedLoader</string>
+    <string name="title_activity_main">RedLoader</string>
+    <string name="package_name">com.redloader.spike</string>
+    <string name="custom_url_scheme">com.redloader.spike</string>
+</resources>
