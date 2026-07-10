@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Collection } from '@shared/types'
 import { useNotify } from '../context/notify'
+import { readCache, writeCache } from '../lib/cache'
+
+// Same key the Collections page (useCachedResource) uses — one shared copy, so
+// the menu opens instantly with known names and a folder created here shows up
+// on the page (and vice versa) without a refetch.
+const COLLECTIONS_CACHE_KEY = 'collections'
 
 /** Viewport rect of the trigger button, captured at open time. */
 export interface MenuAnchor {
@@ -71,7 +77,11 @@ function emitCollectionChange(folderId: string, gifId: string, action: 'add' | '
 export default function CollectionMenu({ contentId, onClose, anchor }: CollectionMenuProps): JSX.Element {
   const notify = useNotify()
 
-  const [collections, setCollections] = useState<Collection[] | null>(null)
+  // Stale-while-revalidate: paint cached names immediately (no "Loading…"
+  // flash on every open), refresh in the background.
+  const [collections, setCollections] = useState<Collection[] | null>(() =>
+    readCache<Collection[]>(COLLECTIONS_CACHE_KEY)
+  )
   const [inIds, setInIds] = useState<Set<string>>(new Set())
   // Two distinct failure states: signed out gets the auth hint, everything
   // else gets the real error + retry. Blaming auth for a network blip lies.
@@ -84,18 +94,29 @@ export default function CollectionMenu({ contentId, onClose, anchor }: Collectio
 
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Latest list without stale closures — a background-refresh failure over
+  // cached rows should stay quiet instead of replacing them with an error.
+  const collectionsRef = useRef(collections)
+  collectionsRef.current = collections
 
   const load = async (): Promise<void> => {
+    // Membership is per-gif and can't be cached ahead — fetch it independently
+    // so the (possibly cached) rows never wait on it; pills fill in when ready.
+    window.api
+      .gifCollections(contentId)
+      .then((ids) => setInIds(new Set(ids)))
+      .catch(() => {
+        /* rows still work; membership pills just stay unknown */
+      })
     try {
-      const [list, ids] = await Promise.all([
-        window.api.getCollections(),
-        window.api.gifCollections(contentId).catch(() => [] as string[])
-      ])
+      const list = await window.api.getCollections()
       setCollections(list)
-      setInIds(new Set(ids))
+      writeCache(COLLECTIONS_CACHE_KEY, list)
       setSignedOut(false)
       setLoadError(null)
     } catch (e) {
+      // Cached rows on screen → fail silently; the menu still works.
+      if (collectionsRef.current && collectionsRef.current.length > 0) return
       const authed = await window.api
         .authStatus()
         .then((s) => s.authenticated)
@@ -223,9 +244,12 @@ export default function CollectionMenu({ contentId, onClose, anchor }: Collectio
       await window.api.createCollection(name)
       // createCollection returns no id, so refetch and match by name — the
       // user's intent was "save THIS gif into a new folder", not just "make
-      // an empty folder", so finish the whole gesture here.
+      // an empty folder", so finish the whole gesture here. The refreshed
+      // list goes into the shared cache so the Collections page and the next
+      // menu open see the new folder immediately.
       const list = await window.api.getCollections()
       setCollections(list)
+      writeCache(COLLECTIONS_CACHE_KEY, list)
       const created = list.find((c) => c.name === name)
       if (created) {
         await window.api.addToCollection(created.id, contentId)
