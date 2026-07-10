@@ -1,12 +1,57 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Collection } from '@shared/types'
 import { useNotify } from '../context/notify'
+
+/** Viewport rect of the trigger button, captured at open time. */
+export interface MenuAnchor {
+  top: number
+  bottom: number
+  left: number
+  right: number
+}
 
 interface CollectionMenuProps {
   /** Gif id being added. */
   contentId: string
   /** Dismiss the popover. */
   onClose: () => void
+  /**
+   * Where to anchor the panel. The player rail scrolls (`overflow-y: auto`),
+   * which clips absolutely-positioned descendants — so the panel positions
+   * itself `fixed` right under (or above) the trigger instead.
+   */
+  anchor?: MenuAnchor
+}
+
+const PANEL_WIDTH = 262
+const PANEL_MAX_HEIGHT = 340
+const GAP = 8
+
+/** Fixed placement under the anchor, flipping above when space runs out. */
+function anchoredStyle(anchor?: MenuAnchor): CSSProperties {
+  if (!anchor) return {}
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const left = Math.min(Math.max(GAP, anchor.right - PANEL_WIDTH), vw - PANEL_WIDTH - GAP)
+  const spaceBelow = vh - anchor.bottom - GAP * 2
+  if (spaceBelow >= 240 || spaceBelow >= anchor.top - GAP * 2) {
+    return {
+      position: 'fixed',
+      left,
+      top: anchor.bottom + GAP,
+      right: 'auto',
+      bottom: 'auto',
+      maxHeight: Math.min(PANEL_MAX_HEIGHT, spaceBelow)
+    }
+  }
+  return {
+    position: 'fixed',
+    left,
+    bottom: vh - anchor.top + GAP,
+    top: 'auto',
+    right: 'auto',
+    maxHeight: Math.min(PANEL_MAX_HEIGHT, anchor.top - GAP * 2)
+  }
 }
 
 /**
@@ -23,7 +68,7 @@ function emitCollectionChange(folderId: string, gifId: string, action: 'add' | '
  * folder AND files the gif into it — one gesture, one toast.
  * Anchored to its trigger via `.menu-panel`; outside clicks and Escape close.
  */
-export default function CollectionMenu({ contentId, onClose }: CollectionMenuProps): JSX.Element {
+export default function CollectionMenu({ contentId, onClose, anchor }: CollectionMenuProps): JSX.Element {
   const notify = useNotify()
 
   const [collections, setCollections] = useState<Collection[] | null>(null)
@@ -121,6 +166,18 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
     if (creating) inputRef.current?.focus()
   }, [creating])
 
+  // A fixed panel doesn't follow its trigger — close when anything outside the
+  // panel scrolls (e.g. the rail) rather than drifting away from the button.
+  useEffect(() => {
+    if (!anchor) return
+    const onScroll = (e: Event): void => {
+      if (rootRef.current && e.target instanceof Node && rootRef.current.contains(e.target)) return
+      onClose()
+    }
+    window.addEventListener('scroll', onScroll, true)
+    return () => window.removeEventListener('scroll', onScroll, true)
+  }, [anchor, onClose])
+
   const add = async (c: Collection): Promise<void> => {
     if (busyId || inIds.has(c.id)) return
     setBusyId(c.id)
@@ -197,7 +254,8 @@ export default function CollectionMenu({ contentId, onClose }: CollectionMenuPro
   return (
     <div
       ref={rootRef}
-      className="menu-panel cmenu"
+      className="menu-panel"
+      style={anchoredStyle(anchor)}
       aria-label="Add to collection"
       onWheel={(e) => e.stopPropagation()}
     >

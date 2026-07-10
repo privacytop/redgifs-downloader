@@ -88,6 +88,14 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
   // --- follow state (shared lib/follows cache) ------------------------------
   const [following, setFollowing] = useState(false)
   const [collectionOpen, setCollectionOpen] = useState(false)
+  // Trigger rect captured at open — the menu positions itself fixed from it
+  // (the scrolling rail clips absolutely-anchored popovers).
+  const [collectionAnchor, setCollectionAnchor] = useState<{
+    top: number
+    bottom: number
+    left: number
+    right: number
+  } | null>(null)
   const [saveOpen, setSaveOpen] = useState(false)
 
   // --- idle chrome ----------------------------------------------------------
@@ -821,7 +829,11 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
           <button
             className="btn player-actions-full"
             type="button"
-            onClick={() => setCollectionOpen((o) => !o)}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              setCollectionAnchor({ top: r.top, bottom: r.bottom, left: r.left, right: r.right })
+              setCollectionOpen((o) => !o)
+            }}
             aria-expanded={collectionOpen}
             aria-haspopup="menu"
             title="Add to collection"
@@ -835,7 +847,11 @@ export default function ImmersivePlayer({ source, onClose }: ImmersivePlayerProp
             Add to collection
           </button>
           {collectionOpen && (
-            <CollectionMenu contentId={current.id} onClose={() => setCollectionOpen(false)} />
+            <CollectionMenu
+              contentId={current.id}
+              anchor={collectionAnchor ?? undefined}
+              onClose={() => setCollectionOpen(false)}
+            />
           )}
         </div>
 
