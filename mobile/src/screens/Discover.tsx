@@ -6,7 +6,9 @@ import { useCachedResource } from '../hooks/useCachedResource'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
 import ScreenHeader from '../components/ScreenHeader'
+import SortMenu from '../components/SortMenu'
 import { formatCount } from '../lib/format'
+import type { SortKey } from '../lib/sort'
 import type { Niche, UserResult } from '@redloader/core'
 
 const MAX_CREATORS = 12
@@ -33,6 +35,7 @@ export default function Discover(): React.JSX.Element {
   const niches = nichesRes.data ?? []
 
   const feed = usePagedFeed((p) => api.searchGifs({ order: 'latest', page: p }), [], 'feed:discover')
+  const [sort, setSort] = useState<SortKey>('default')
 
   const submitSearch = (): void => {
     const q = query.trim()
@@ -136,8 +139,11 @@ export default function Discover(): React.JSX.Element {
         </div>
       )}
 
-      <div className="section-label">Fresh videos</div>
-      <Feed feed={feed} label="Discover" emptyMessage="Nothing to show" />
+      <div className="feed-head" style={{ margin: '22px 0 10px' }}>
+        <div className="section-label" style={{ margin: 0 }}>Fresh videos</div>
+        <SortMenu value={sort} onChange={setSort} />
+      </div>
+      <Feed feed={feed} label="Discover" emptyMessage="Nothing to show" sort={sort} onSortChange={setSort} hideToolbar />
     </div>
   )
 }

@@ -408,6 +408,9 @@ button { font-family: inherit; color: inherit; }
 .sortmenu-opt svg { width: 14px; height: 14px; color: var(--ember); flex: none; }
 
 .feed-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+/* A header row that carries a control (seg / section label) on the left and the
+   sort menu on the right. */
+.feed-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 /* --- Chips ------------------------------------------------------------------ */
 .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }

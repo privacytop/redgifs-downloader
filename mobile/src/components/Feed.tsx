@@ -11,17 +11,33 @@ interface FeedProps {
   label: string
   emptyMessage?: string
   emptyHint?: string
+  /** Controlled sort — pass with onSortChange to place the SortMenu yourself. */
+  sort?: SortKey
+  onSortChange?: (key: SortKey) => void
+  /** Suppress the built-in sort toolbar (when the screen renders SortMenu itself). */
+  hideToolbar?: boolean
 }
 
 /**
- * The shared feed body: a sort bar + the grid + the swipe player, wired to one
- * paginator. The client-side sort reorders the loaded items instantly and is
- * carried into the player, so every screen that renders a feed gets the same
- * sorting for free.
+ * The shared feed body: a sort control + the grid + the swipe player, wired to
+ * one paginator. Sort is client-side and carried into the player. By default
+ * Feed owns the sort state and renders its own toolbar; a screen can instead
+ * drive it (sort/onSortChange) and render the SortMenu elsewhere with
+ * hideToolbar, e.g. inline on the header row.
  */
-export default function Feed({ feed, label, emptyMessage = 'Nothing here', emptyHint }: FeedProps): React.JSX.Element {
+export default function Feed({
+  feed,
+  label,
+  emptyMessage = 'Nothing here',
+  emptyHint,
+  sort: sortProp,
+  onSortChange,
+  hideToolbar
+}: FeedProps): React.JSX.Element {
   const player = usePlayer()
-  const [sort, setSort] = useState<SortKey>('default')
+  const [innerSort, setInnerSort] = useState<SortKey>('default')
+  const sort = sortProp ?? innerSort
+  const setSort = onSortChange ?? setInnerSort
   const items = useMemo(() => sortContents(feed.items, sort), [feed.items, sort])
 
   const open = (_c: Content, index: number): void => {
@@ -48,9 +64,11 @@ export default function Feed({ feed, label, emptyMessage = 'Nothing here', empty
 
   return (
     <>
-      <div className="feed-toolbar">
-        <SortMenu value={sort} onChange={setSort} />
-      </div>
+      {!hideToolbar && (
+        <div className="feed-toolbar">
+          <SortMenu value={sort} onChange={setSort} />
+        </div>
+      )}
       <MediaGrid
         items={items}
         onOpen={open}

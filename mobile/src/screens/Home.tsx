@@ -4,6 +4,8 @@ import { usePagedFeed } from '../hooks/usePagedFeed'
 import { useAuth } from '../context/auth'
 import Feed from '../components/Feed'
 import ScreenHeader from '../components/ScreenHeader'
+import SortMenu from '../components/SortMenu'
+import type { SortKey } from '../lib/sort'
 
 type Tab = 'trending' | 'for-you'
 
@@ -14,6 +16,7 @@ type Tab = 'trending' | 'for-you'
 export default function Home(): React.JSX.Element {
   const { authenticated } = useAuth()
   const [tab, setTab] = useState<Tab>('trending')
+  const [sort, setSort] = useState<SortKey>('default')
   const gatedForYou = tab === 'for-you' && !authenticated
 
   const feed = usePagedFeed(
@@ -28,7 +31,7 @@ export default function Home(): React.JSX.Element {
   return (
     <div className="page">
       <ScreenHeader title={tab === 'trending' ? 'Trending' : 'For you'} />
-      <div style={{ margin: '0 0 18px' }}>
+      <div className="feed-head" style={{ margin: '0 0 18px' }}>
         <div className="seg" role="group" aria-label="Feed">
           <button className={tab === 'for-you' ? 'on' : ''} onClick={() => setTab('for-you')}>
             For you
@@ -37,6 +40,7 @@ export default function Home(): React.JSX.Element {
             Trending
           </button>
         </div>
+        {!gatedForYou && <SortMenu value={sort} onChange={setSort} />}
       </div>
 
       {gatedForYou ? (
@@ -46,7 +50,14 @@ export default function Home(): React.JSX.Element {
           <button className="btn" onClick={() => setTab('trending')}>Browse Trending</button>
         </div>
       ) : (
-        <Feed feed={feed} label={tab === 'trending' ? 'Trending' : 'For you'} emptyMessage="Nothing here yet" />
+        <Feed
+          feed={feed}
+          label={tab === 'trending' ? 'Trending' : 'For you'}
+          emptyMessage="Nothing here yet"
+          sort={sort}
+          onSortChange={setSort}
+          hideToolbar
+        />
       )}
     </div>
   )
