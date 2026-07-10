@@ -274,6 +274,11 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     navigate(`/creator/${encodeURIComponent(current.username)}`)
   }
 
+  const goTag = (tag: string): void => {
+    onClose()
+    navigate(`/tag/${encodeURIComponent(tag)}`)
+  }
+
   // --- gestures -------------------------------------------------------------
   const onTouchStart = (e: React.TouchEvent): void => {
     startY.current = e.touches[0].clientY
@@ -439,6 +444,15 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
             </div>
           </div>
         </div>
+        {current.tags && current.tags.length > 0 && (
+          <div className="player-tags">
+            {current.tags.slice(0, 6).map((t) => (
+              <button key={t} className="player-tag" onClick={() => goTag(t)}>
+                #{t}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="player-scrub">

@@ -597,6 +597,19 @@ button { font-family: inherit; color: inherit; }
   white-space: nowrap;
 }
 .player-stats { font-family: var(--mono); font-size: 11px; color: var(--mut); margin-top: 4px; }
+.player-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.player-tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--cream);
+  background: rgba(12, 11, 14, 0.5);
+  border: 1px solid rgba(245, 239, 230, 0.18);
+  border-radius: 999px;
+  padding: 3px 9px;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+}
+.player-tag:active { border-color: var(--ember); color: var(--ember2); }
 .player-paused {
   position: absolute;
   inset: 0;
