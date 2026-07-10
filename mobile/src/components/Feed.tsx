@@ -3,7 +3,7 @@ import type { Content } from '@redloader/core'
 import type { PagedFeed } from '../hooks/usePagedFeed'
 import { usePlayer } from '../player/PlayerProvider'
 import { sortContents, type SortKey } from '../lib/sort'
-import SortBar from './SortBar'
+import SortMenu from './SortMenu'
 import MediaGrid from './MediaGrid'
 
 interface FeedProps {
@@ -48,7 +48,9 @@ export default function Feed({ feed, label, emptyMessage = 'Nothing here', empty
 
   return (
     <>
-      <SortBar value={sort} onChange={setSort} />
+      <div className="feed-toolbar">
+        <SortMenu value={sort} onChange={setSort} />
+      </div>
       <MediaGrid
         items={items}
         onOpen={open}

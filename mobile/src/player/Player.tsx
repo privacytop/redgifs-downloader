@@ -8,14 +8,18 @@ import { useSettings } from '../context/settings'
 import { useAuth } from '../context/auth'
 import { isLiked, loadLikedIds, setLike, LIKE_EVENT, type LikeChange } from '../lib/likes'
 import { FOLLOW_EVENT, isFollowing, loadFollows, setFollow, type FollowChange } from '../lib/follows'
+import { COLLECT_EVENT, type CollectChange } from '../lib/collect'
+import { storage } from '../lib/storage'
 import {
   IconBookmark,
+  IconCheck,
   IconDownload,
   IconHeart,
   IconMuted,
   IconPlay,
+  IconPlus,
   IconSound,
-  IconUsers,
+  IconUser,
   IconX
 } from '../components/icons'
 
@@ -59,6 +63,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   })
   const [liked, setLiked] = useState(false)
   const [following, setFollowing] = useState(false)
+  const [collected, setCollected] = useState(false)
   const [progress, setProgress] = useState(0)
   const [drag, setDrag] = useState(0)
   const [heartBurst, setHeartBurst] = useState(false)
@@ -126,6 +131,14 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     setProgress(0)
     setLiked(current ? isLiked(current.id) : false)
     if (current) setFollowing(isFollowing(current.username))
+    // Collection membership lives in sqlite; reflect it (async) per clip.
+    setCollected(false)
+    if (current) {
+      const id = current.id
+      void storage.gifCollectionIds(id).then((ids) => {
+        if (itemsRef.current[indexRef.current]?.id === id) setCollected(ids.length > 0)
+      })
+    }
     for (const [id, v] of videoRefs.current) {
       if (id !== current?.id) {
         v.pause()
@@ -161,11 +174,18 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       const c = itemsRef.current[indexRef.current]
       if (c && c.username.toLowerCase() === d.username.toLowerCase()) setFollowing(d.following)
     }
+    const onCollect = (e: Event): void => {
+      const d = (e as CustomEvent<CollectChange>).detail
+      const c = itemsRef.current[indexRef.current]
+      if (c && c.id === d.gifId) setCollected(d.collected)
+    }
     window.addEventListener(LIKE_EVENT, onLike)
     window.addEventListener(FOLLOW_EVENT, onFollow)
+    window.addEventListener(COLLECT_EVENT, onCollect)
     return () => {
       window.removeEventListener(LIKE_EVENT, onLike)
       window.removeEventListener(FOLLOW_EVENT, onFollow)
+      window.removeEventListener(COLLECT_EVENT, onCollect)
     }
   }, [])
 
@@ -390,12 +410,9 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         <RailBtn label={muted ? 'Muted' : 'Sound'} onClick={() => setMuted((m) => !m)}>
           {muted ? <IconMuted /> : <IconSound />}
         </RailBtn>
-        <RailBtn label={following ? 'Following' : 'Follow'} on={following} onClick={() => void toggleFollow()}>
-          <IconUsers />
-        </RailBtn>
         {onCollect && (
-          <RailBtn label="Collect" onClick={() => onCollect(current)}>
-            <IconBookmark />
+          <RailBtn label={collected ? 'Collected' : 'Collect'} on={collected} onClick={() => onCollect(current)}>
+            <IconBookmark style={collected ? { fill: 'var(--ember)', stroke: 'var(--ember)' } : undefined} />
           </RailBtn>
         )}
         {onSave && (
@@ -406,9 +423,21 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       </div>
 
       <div className="player-info">
-        <button className="player-handle" onClick={goCreator}>@{current.username}</button>
-        <div className="player-stats">
-          {formatViews(current.views)} views · {formatDuration(current.duration)}
+        <div className="player-id">
+          <button
+            className={`player-follow ${following ? 'on' : ''}`}
+            onClick={() => void toggleFollow()}
+            aria-label={following ? 'Following — tap to unfollow' : 'Follow'}
+          >
+            <IconUser />
+            <span className="player-follow-badge">{following ? <IconCheck /> : <IconPlus />}</span>
+          </button>
+          <div className="player-id-text">
+            <button className="player-handle" onClick={goCreator}>@{current.username}</button>
+            <div className="player-stats">
+              {formatViews(current.views)} views · {formatDuration(current.duration)}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { useLocation, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
+import ScreenHeader from '../components/ScreenHeader'
 
 /**
  * NicheDetail: gifs inside one niche. Title comes from navigation state (set by
@@ -16,8 +17,7 @@ export default function NicheDetail(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">{title}</h1>
-      <div style={{ height: 10 }} />
+      <ScreenHeader title={title} back />
       <Feed feed={feed} label={title} emptyMessage="Nothing here yet" />
     </div>
   )

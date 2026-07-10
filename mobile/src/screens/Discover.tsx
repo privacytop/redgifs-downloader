@@ -3,16 +3,20 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import { useToast } from '../context/toast'
 import { useCachedResource } from '../hooks/useCachedResource'
+import { usePagedFeed } from '../hooks/usePagedFeed'
+import Feed from '../components/Feed'
+import ScreenHeader from '../components/ScreenHeader'
 import { formatCount } from '../lib/format'
 import type { Niche, UserResult } from '@redloader/core'
 
 const MAX_CREATORS = 12
 
 /**
- * Discover landing: a search box, a "Trending creators" list, and a "Niches"
- * chip row. Creators and niches are each cached (stale-while-revalidate) so
- * switching to this tab paints instantly instead of flashing a loader; tapping
- * a creator or niche routes to its own paged detail screen.
+ * Discover landing: a search box, a "Trending creators" list, a "Niches" chip
+ * row, and a browsable "Fresh videos" gif feed (like the desktop Discover).
+ * Creators and niches are each cached (stale-while-revalidate) so switching to
+ * this tab paints instantly; tapping a creator or niche routes to its own paged
+ * detail screen, and the gif feed opens into the swipe player.
  */
 export default function Discover(): React.JSX.Element {
   const navigate = useNavigate()
@@ -27,6 +31,8 @@ export default function Discover(): React.JSX.Element {
   const nichesRes = useCachedResource<Niche[]>('discover:niches', () => api.getNichesTrending())
   const creators = creatorsRes.data ?? []
   const niches = nichesRes.data ?? []
+
+  const feed = usePagedFeed((p) => api.searchGifs({ order: 'latest', page: p }), [], 'feed:discover')
 
   const submitSearch = (): void => {
     const q = query.trim()
@@ -47,9 +53,9 @@ export default function Discover(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">Discover</h1>
+      <ScreenHeader title="Discover" />
 
-      <div style={{ margin: '14px 0 4px' }}>
+      <div style={{ margin: '0 0 4px' }}>
         <input
           className="search"
           type="search"
@@ -129,6 +135,9 @@ export default function Discover(): React.JSX.Element {
           ))}
         </div>
       )}
+
+      <div className="section-label">Fresh videos</div>
+      <Feed feed={feed} label="Discover" emptyMessage="Nothing to show" />
     </div>
   )
 }

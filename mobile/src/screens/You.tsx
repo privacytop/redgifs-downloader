@@ -7,6 +7,8 @@ import { useCachedResource } from '../hooks/useCachedResource'
 import { formatCount } from '../lib/format'
 import type { UserProfile } from '@redloader/core'
 import { IconGear, IconUser } from '../components/icons'
+import ScreenHeader from '../components/ScreenHeader'
+import IconButton from '../components/IconButton'
 
 /** Account + profile: sign in/out, stats, blocked tags, preferences, settings. */
 export default function You(): React.JSX.Element {
@@ -46,18 +48,14 @@ export default function You(): React.JSX.Element {
   }
 
   const gear = (
-    <button className="btn btn-sm" onClick={() => navigate('/settings')} aria-label="Settings">
+    <IconButton label="Settings" variant="solid" onClick={() => navigate('/settings')}>
       <IconGear />
-    </button>
+    </IconButton>
   )
 
   return (
     <div className="page">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 className="title">You</h1>
-        {gear}
-      </div>
-      <hr className="rule" />
+      <ScreenHeader title="You" right={gear} />
 
       {!ready ? (
         <div className="loading">Loading…</div>

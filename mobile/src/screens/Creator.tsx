@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
+import ScreenHeader from '../components/ScreenHeader'
 import { useToast } from '../context/toast'
 import { useAuth } from '../context/auth'
 import { FOLLOW_EVENT, isFollowing, loadFollows, setFollow, type FollowChange } from '../lib/follows'
@@ -75,12 +76,14 @@ export default function Creator(): React.JSX.Element {
 
   return (
     <div className="page">
+      <ScreenHeader title={`@${username}`} back />
+
       <div className="creator" style={{ marginTop: 4 }}>
         <div className="avatar">
           {profile?.profilePic ? <img src={profile.profilePic} alt="" /> : initial}
         </div>
         <div className="creator-info">
-          <h1 className="title" style={{ margin: 0, fontSize: 22 }}>@{username}</h1>
+          <div className="creator-name">@{username}</div>
           {profile && (
             <div className="readout" style={{ marginTop: 4 }}>
               {formatCount(profile.followers)} followers · {formatCount(profile.totalGifs)} gifs ·{' '}

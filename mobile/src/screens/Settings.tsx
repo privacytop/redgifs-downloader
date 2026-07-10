@@ -1,23 +1,13 @@
-import { useNavigate } from 'react-router-dom'
 import { useSettings } from '../context/settings'
-import { IconChevronLeft } from '../components/icons'
+import ScreenHeader from '../components/ScreenHeader'
 
 /** App settings — download quality + single-tap behavior (parity with desktop). */
 export default function Settings(): React.JSX.Element {
-  const navigate = useNavigate()
   const { quality, tapBehavior, set } = useSettings()
 
   return (
     <div className="page">
-      <button
-        className="btn btn-sm"
-        style={{ marginBottom: 14 }}
-        onClick={() => navigate(-1)}
-        aria-label="Back"
-      >
-        <IconChevronLeft /> Back
-      </button>
-      <h1 className="title">Settings</h1>
+      <ScreenHeader title="Settings" back />
 
       <div className="section-label">Downloads</div>
       <div className="set-row">

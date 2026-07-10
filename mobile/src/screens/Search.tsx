@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
+import ScreenHeader from '../components/ScreenHeader'
 import { useToast } from '../context/toast'
 import { formatCount } from '../lib/format'
 import type { Niche, UserResult } from '@redloader/core'
@@ -53,7 +54,7 @@ export default function Search(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">{query || 'Search'}</h1>
+      <ScreenHeader title={query || 'Search'} back />
 
       {creators.length > 0 && (
         <>

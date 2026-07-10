@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import { useAuth } from '../context/auth'
 import Feed from '../components/Feed'
+import ScreenHeader from '../components/ScreenHeader'
 
 type Tab = 'trending' | 'for-you'
 
@@ -26,8 +27,8 @@ export default function Home(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">{tab === 'trending' ? 'Trending' : 'For you'}</h1>
-      <div style={{ margin: '12px 0 18px' }}>
+      <ScreenHeader title={tab === 'trending' ? 'Trending' : 'For you'} />
+      <div style={{ margin: '0 0 18px' }}>
         <div className="seg" role="group" aria-label="Feed">
           <button className={tab === 'for-you' ? 'on' : ''} onClick={() => setTab('for-you')}>
             For you

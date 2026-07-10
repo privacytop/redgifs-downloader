@@ -11,7 +11,8 @@ import { useCachedResource } from '../hooks/useCachedResource'
 import { readCache, writeCache } from '../lib/cache'
 import { sortContents, type SortKey } from '../lib/sort'
 import Feed from '../components/Feed'
-import SortBar from '../components/SortBar'
+import SortMenu from '../components/SortMenu'
+import ScreenHeader from '../components/ScreenHeader'
 import MediaGrid from '../components/MediaGrid'
 import { formatCount } from '../lib/format'
 
@@ -33,8 +34,8 @@ export default function Library(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">Library</h1>
-      <div style={{ margin: '12px 0 18px' }}>
+      <ScreenHeader title="Library" />
+      <div style={{ margin: '0 0 18px' }}>
         <div className="seg" role="group" aria-label="Library view">
           <button className={view === 'media' ? 'on' : ''} onClick={() => go('media')}>All media</button>
           <button className={view === 'collections' ? 'on' : ''} onClick={() => go('collections')}>Collections</button>
@@ -157,8 +158,8 @@ function AllMedia(): React.JSX.Element {
             ? `${progress?.gifsCached ?? 0} cached · ${progress?.currentLabel ?? ''}`
             : `${formatCount(results.length)} of ${formatCount(count)}`}
         </span>
+        <SortMenu value={sort} onChange={setSort} style={{ marginLeft: 'auto' }} />
       </div>
-      <SortBar value={sort} onChange={setSort} />
       <MediaGrid
         items={shown}
         onOpen={open}

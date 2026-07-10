@@ -2,6 +2,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
+import ScreenHeader from '../components/ScreenHeader'
 
 /** TagDetail: every gif under a single #tag, with the shared sortable feed. */
 export default function TagDetail(): React.JSX.Element {
@@ -16,8 +17,7 @@ export default function TagDetail(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">#{tag}</h1>
-      <div style={{ height: 10 }} />
+      <ScreenHeader title={`#${tag}`} back />
       <Feed feed={feed} label={`#${tag}`} emptyMessage={`Nothing tagged #${tag}`} />
     </div>
   )

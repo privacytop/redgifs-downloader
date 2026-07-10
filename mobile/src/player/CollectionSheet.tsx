@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import { storage } from '../lib/storage'
 import { useToast } from '../context/toast'
 import { readCache, writeCache } from '../lib/cache'
+import { emitCollectChange } from '../lib/collect'
 import { IconBookmark } from '../components/icons'
 
 interface CollectionSheetProps {
@@ -55,24 +56,29 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentId])
 
+  // Re-read membership from sqlite (the source of truth) after every mutation
+  // instead of mutating a Set captured from the render closure — that avoids a
+  // stale-closure clobber if a create() resolves in between.
+  const syncMembership = async (): Promise<void> => {
+    const ids = await storage.gifCollectionIds(contentId)
+    setInIds(new Set(ids))
+    emitCollectChange(contentId, ids.length > 0)
+  }
+
   const toggle = async (c: Collection): Promise<void> => {
-    if (busyId) return
+    if (busyId || saving) return
     setBusyId(c.id)
     const inside = inIds.has(c.id)
     try {
       if (inside) {
         await api.removeFromCollection(c.id, contentId)
         await storage.removeGifMembership(contentId, 'collection', c.id)
-        setInIds((prev) => {
-          const n = new Set(prev)
-          n.delete(c.id)
-          return n
-        })
+        await syncMembership()
         notify('Removed from ' + c.name, 'success')
       } else {
         await api.addToCollection(c.id, contentId)
         await storage.addGifMembership(contentId, 'collection', c.id)
-        setInIds((prev) => new Set(prev).add(c.id))
+        await syncMembership()
         notify('Added to ' + c.name, 'success')
       }
     } catch (e) {
@@ -95,7 +101,7 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
       if (made) {
         await api.addToCollection(made.id, contentId)
         await storage.addGifMembership(contentId, 'collection', made.id)
-        setInIds((prev) => new Set(prev).add(made.id))
+        await syncMembership()
         notify('Added to ' + n, 'success')
       } else {
         notify('Created ' + n, 'success')
@@ -118,7 +124,7 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
         ) : (
           <>
             {cols.map((c) => (
-              <button key={c.id} className="sheet-row" disabled={busyId !== null} onClick={() => void toggle(c)}>
+              <button key={c.id} className="sheet-row" disabled={busyId !== null || saving} onClick={() => void toggle(c)}>
                 <IconBookmark style={inIds.has(c.id) ? { color: 'var(--ember)' } : undefined} />
                 <span style={{ flex: 1 }}>{busyId === c.id ? '…' : c.name}</span>
                 {inIds.has(c.id) && <span className="pill pill-ok">in</span>}

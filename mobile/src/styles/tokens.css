@@ -164,6 +164,35 @@ button { font-family: inherit; color: inherit; }
 .btn-sm { padding: 7px 12px; font-size: 13px; }
 .btn.on { color: var(--ember); border-color: var(--ember); background: rgba(216, 86, 61, 0.1); }
 
+/* --- Icon button (the one icon-only control) -------------------------------- */
+.icon-btn {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--cream);
+  cursor: pointer;
+}
+.icon-btn svg { width: 22px; height: 22px; }
+.icon-btn:active { transform: translateY(0.5px); }
+.icon-btn-solid { background: var(--panel); border-color: var(--line2); }
+.icon-btn-ghost:active { background: var(--panel); }
+
+/* --- Screen header (back / title / right slot) ------------------------------ */
+.screen-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.screen-header .title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.screen-header-back { margin-left: -8px; }
+.screen-header-right { flex: none; margin-left: auto; }
+
 /* --- Search field ----------------------------------------------------------- */
 .search {
   width: 100%;
@@ -315,19 +344,33 @@ button { font-family: inherit; color: inherit; }
 }
 .tile-sub { font-family: var(--mono); font-size: 10px; color: var(--mut); margin-top: 4px; }
 
-/* --- Sort bar (horizontal scroll strip above a feed) ------------------------ */
-.sortbar {
-  display: flex;
-  gap: 7px;
-  overflow-x: auto;
-  padding: 0 0 12px;
-  margin: 0 -16px 4px;
-  padding-left: 16px;
-  padding-right: 16px;
-  scrollbar-width: none;
+/* --- Sort menu (the one sort control, a styled native select) --------------- */
+.sortmenu { position: relative; display: inline-flex; }
+.sortmenu select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--cream);
+  background: var(--panel);
+  border: 1px solid var(--line2);
+  border-radius: 999px;
+  padding: 7px 28px 7px 13px;
+  cursor: pointer;
 }
-.sortbar::-webkit-scrollbar { display: none; }
-.sortbar .chip { flex: none; }
+.sortmenu::after {
+  content: '';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--mut);
+  border-bottom: 1.5px solid var(--mut);
+  transform: translateY(-70%) rotate(45deg);
+  pointer-events: none;
+}
+.feed-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 
 /* --- Chips ------------------------------------------------------------------ */
 .chip-row { display: flex; flex-wrap: wrap; gap: 7px; }
@@ -464,6 +507,39 @@ button { font-family: inherit; color: inherit; }
   bottom: calc(var(--safe-bottom) + 20px);
   z-index: 5;
 }
+.player-id { display: flex; align-items: center; gap: 11px; }
+.player-id-text { min-width: 0; }
+.player-follow {
+  position: relative;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px solid rgba(245, 239, 230, 0.55);
+  background: rgba(12, 11, 14, 0.5);
+  color: var(--cream);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+.player-follow svg { width: 24px; height: 24px; }
+.player-follow.on { border-color: var(--ember); color: var(--ember); }
+.player-follow-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--cream);
+  color: #170a08;
+  border: 2px solid #050406;
+}
+.player-follow.on .player-follow-badge { background: var(--ember); }
+.player-follow-badge svg { width: 12px; height: 12px; stroke-width: 3.2; }
 .player-handle {
   font-family: var(--serif);
   font-size: 19px;
@@ -473,6 +549,10 @@ button { font-family: inherit; color: inherit; }
   border: 0;
   padding: 0;
   cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .player-stats { font-family: var(--mono); font-size: 11px; color: var(--mut); margin-top: 4px; }
 .player-paused {

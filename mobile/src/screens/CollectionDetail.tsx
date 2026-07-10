@@ -2,6 +2,7 @@ import { useLocation, useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
+import ScreenHeader from '../components/ScreenHeader'
 
 /** One collection's gifs, with the shared sortable feed. */
 export default function CollectionDetail(): React.JSX.Element {
@@ -13,8 +14,7 @@ export default function CollectionDetail(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">{title}</h1>
-      <hr className="rule" />
+      <ScreenHeader title={title} back />
       <Feed feed={feed} label={title} emptyMessage="Empty collection" />
     </div>
   )

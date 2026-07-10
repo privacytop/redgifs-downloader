@@ -1,4 +1,5 @@
 import { useDownloads, type DownloadTask } from '../context/downloads'
+import ScreenHeader from '../components/ScreenHeader'
 
 function pill(t: DownloadTask): { cls: string; text: string } {
   if (t.status === 'completed') return { cls: 'pill pill-ok', text: 'done' }
@@ -12,8 +13,7 @@ export default function Downloads(): React.JSX.Element {
 
   return (
     <div className="page">
-      <h1 className="title">Downloads</h1>
-      <hr className="rule" />
+      <ScreenHeader title="Downloads" />
 
       {tasks.length === 0 ? (
         <div className="empty">
