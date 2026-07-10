@@ -8,6 +8,7 @@ import { useToast } from '../context/toast'
 import { usePlayer } from '../player/PlayerProvider'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import { useCachedResource } from '../hooks/useCachedResource'
+import { readCache, writeCache } from '../lib/cache'
 import MediaGrid from '../components/MediaGrid'
 import { formatCount } from '../lib/format'
 
@@ -18,15 +19,23 @@ const RENDER_BATCH = 60
 export default function Library(): React.JSX.Element {
   const { authenticated } = useAuth()
   const [view, setView] = useState<View>('media')
+  // Keep-alive: a sub-view is mounted the first time it's visited and then kept
+  // mounted (just hidden), so switching back is instant with no reload flash.
+  const [visited, setVisited] = useState<Set<View>>(new Set(['media']))
+
+  const go = (v: View): void => {
+    setView(v)
+    setVisited((prev) => (prev.has(v) ? prev : new Set(prev).add(v)))
+  }
 
   return (
     <div className="page">
       <h1 className="title">Library</h1>
       <div style={{ margin: '12px 0 18px' }}>
         <div className="seg" role="group" aria-label="Library view">
-          <button className={view === 'media' ? 'on' : ''} onClick={() => setView('media')}>All media</button>
-          <button className={view === 'collections' ? 'on' : ''} onClick={() => setView('collections')}>Collections</button>
-          <button className={view === 'likes' ? 'on' : ''} onClick={() => setView('likes')}>Likes</button>
+          <button className={view === 'media' ? 'on' : ''} onClick={() => go('media')}>All media</button>
+          <button className={view === 'collections' ? 'on' : ''} onClick={() => go('collections')}>Collections</button>
+          <button className={view === 'likes' ? 'on' : ''} onClick={() => go('likes')}>Likes</button>
         </div>
       </div>
 
@@ -35,12 +44,12 @@ export default function Library(): React.JSX.Element {
           <div className="empty-msg">Sign in to use your library</div>
           <div className="empty-sub">Your likes, collections and the offline index need a RedGifs account.</div>
         </div>
-      ) : view === 'media' ? (
-        <AllMedia />
-      ) : view === 'collections' ? (
-        <Collections />
       ) : (
-        <Likes />
+        <>
+          {visited.has('media') && <div hidden={view !== 'media'}><AllMedia /></div>}
+          {visited.has('collections') && <div hidden={view !== 'collections'}><Collections /></div>}
+          {visited.has('likes') && <div hidden={view !== 'likes'}><Likes /></div>}
+        </>
       )}
     </div>
   )
@@ -52,7 +61,10 @@ function AllMedia(): React.JSX.Element {
   const player = usePlayer()
   const [all, setAll] = useState<Content[]>([])
   const [query, setQuery] = useState('')
-  const [count, setCount] = useState(0)
+  // Seed the count from cache so a return visit shows the real state instantly
+  // (no "Nothing indexed yet" flash before the async sqlite read resolves).
+  const [count, setCount] = useState<number>(() => readCache<number>('library:count') ?? 0)
+  const [loaded, setLoaded] = useState(false)
   const [progress, setProgress] = useState<LibraryProgress | null>(null)
   const [visible, setVisible] = useState(RENDER_BATCH)
 
@@ -61,8 +73,11 @@ function AllMedia(): React.JSX.Element {
       const [rows, n] = await Promise.all([storage.searchCachedGifs({}), storage.cachedCount()])
       setAll(rows)
       setCount(n)
+      writeCache('library:count', n)
     } catch (e) {
       notify('Couldn’t read the library: ' + (e instanceof Error ? e.message : String(e)), 'error')
+    } finally {
+      setLoaded(true)
     }
   }, [notify])
 
@@ -106,7 +121,10 @@ function AllMedia(): React.JSX.Element {
     player.open({ items: results, index, label: 'Library', loadMore: async () => [] })
   }
 
+  // Only show the onboarding once a read has confirmed the index is truly empty
+  // — never during the initial async load (that caused the flash).
   if (count === 0 && !running) {
+    if (!loaded) return <div className="loading">Loading…</div>
     return (
       <div className="empty">
         <div className="empty-msg">Nothing indexed yet</div>
