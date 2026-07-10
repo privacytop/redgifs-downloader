@@ -5,6 +5,7 @@ import EmptyState from '../components/EmptyState'
 import QualityToggle from '../components/QualityToggle'
 import { useQuality } from '../context/quality'
 import { useThumbnailMode, type ThumbMode } from '../hooks/useThumbnailMode'
+import { useLocalFlag } from '../hooks/useLocalFlag'
 
 const THUMB_MODES: { id: ThumbMode; label: string }[] = [
   { id: 'default', label: 'Default' },
@@ -35,6 +36,7 @@ export default function SettingsPage({ notify }: { notify: (m: string, t?: Toast
   const [picking, setPicking] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [thumbMode, setThumbMode] = useThumbnailMode()
+  const [collectionPreviews, setCollectionPreviews] = useLocalFlag('collectionPreviews', true)
   const { quality } = useQuality()
 
   const load = (): void => {
@@ -216,6 +218,25 @@ export default function SettingsPage({ notify }: { notify: (m: string, t?: Toast
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            <div className="set-row">
+              <div className="set-main">
+                <label className="set-label" htmlFor="set-collection-previews">
+                  Collection previews
+                </label>
+                <div className="set-hint">
+                  Show cover thumbnails in the add-to-collection menu · applies immediately
+                </div>
+              </div>
+              <div className="set-control">
+                <input
+                  id="set-collection-previews"
+                  type="checkbox"
+                  checked={collectionPreviews}
+                  onChange={(e) => setCollectionPreviews(e.target.checked)}
+                />
               </div>
             </div>
           </section>

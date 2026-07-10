@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import PageHeader from '../components/PageHeader'
 import ViewToggle from '../components/ViewToggle'
 import Dropdown from '../components/Dropdown'
@@ -23,6 +23,10 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: 'duration', label: 'Longest' },
   { key: 'az', label: 'Creator A–Z' }
 ]
+
+// Cards rendered initially / added per scroll step — the index can hold
+// thousands of gifs, and mounting them all at once locks the page up.
+const RENDER_BATCH = 60
 
 const comparators: Record<SortKey, (a: Content, b: Content) => number> = {
   recent: (a, b) => b.createDate - a.createDate,
@@ -128,9 +132,13 @@ export default function Library(): JSX.Element {
       })
   }
 
+  // Filtering thousands of rows per keystroke is fine; RENDERING them is not —
+  // defer the query so typing stays responsive while the grid catches up.
+  const deferredQuery = useDeferredValue(query)
+
   // Free-text + blocked-tag filter, then sort. Recomputed only when inputs move.
   const results = useMemo(() => {
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean)
+    const terms = deferredQuery.toLowerCase().split(/\s+/).filter(Boolean)
     const filtered = all.filter((c) => {
       if (isBlocked(c)) return false
       if (!terms.length) return true
@@ -146,7 +154,16 @@ export default function Library(): JSX.Element {
       return terms.every((t) => hay.includes(t))
     })
     return filtered.sort(comparators[sort])
-  }, [all, query, sort, isBlocked])
+  }, [all, deferredQuery, sort, isBlocked])
+
+  // Incremental rendering: only a slice of the results is mounted; scrolling
+  // near the end grows it. The player still receives the FULL result list, so
+  // wheeling through clips isn't capped by what the grid has rendered.
+  const [visibleCount, setVisibleCount] = useState(RENDER_BATCH)
+  useEffect(() => {
+    setVisibleCount(RENDER_BATCH)
+  }, [source, sort, deferredQuery])
+  const visible = useMemo(() => results.slice(0, visibleCount), [results, visibleCount])
 
   const open = (_c: Content, index: number): void => {
     player.open({ items: results, index, label: 'Library', loadMore: async () => [] })
@@ -226,7 +243,14 @@ export default function Library(): JSX.Element {
             onRetry={reload}
           />
           {results.length > 0 && (
-            <FeedGrid items={results} mode={mode} onOpen={open} onDownload={download} />
+            <FeedGrid
+              items={visible}
+              mode={mode}
+              onOpen={open}
+              onDownload={download}
+              onEndReached={() => setVisibleCount((c) => c + RENDER_BATCH)}
+              hasMore={visibleCount < results.length}
+            />
           )}
         </>
       )}

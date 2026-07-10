@@ -233,6 +233,10 @@ input::placeholder { color: var(--dim); }
   overflow: hidden;
   cursor: pointer;
   transition: border-color 0.18s ease, transform 0.18s ease;
+  /* Long grids: skip layout/paint for offscreen cards. The placeholder size
+     only matters before first paint — aspect-ratio keeps geometry stable. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
 }
 .pcard:hover {
   border-color: var(--line2);
@@ -1552,6 +1556,14 @@ input::placeholder { color: var(--dim); }
 .menu-row.active { background: rgba(255, 255, 255, 0.045); }
 .menu-row:disabled { opacity: 0.45; cursor: default; }
 .menu-row:disabled:hover { background: none; }
+.menu-thumb {
+  width: 40px;
+  height: 26px;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--line);
+}
 .menu-hint {
   font-family: var(--mono);
   font-size: 11px;

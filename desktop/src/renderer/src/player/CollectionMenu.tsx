@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { Collection } from '@shared/types'
 import { useNotify } from '../context/notify'
 import { readCache, writeCache } from '../lib/cache'
+import { useLocalFlag } from '../hooks/useLocalFlag'
 
 // Same key the Collections page (useCachedResource) uses — one shared copy, so
 // the menu opens instantly with known names and a folder created here shows up
@@ -91,6 +92,9 @@ export default function CollectionMenu({ contentId, onClose, anchor }: Collectio
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [saving, setSaving] = useState(false)
+  // Cover thumbnails per row — user-toggleable in Settings → Appearance.
+  const [previews] = useLocalFlag('collectionPreviews', true)
+  const [brokenThumbs, setBrokenThumbs] = useState<ReadonlySet<string>>(new Set())
 
   const rootRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -307,6 +311,19 @@ export default function CollectionMenu({ contentId, onClose, anchor }: Collectio
             disabled={busyId !== null}
             onClick={() => toggle(c)}
           >
+            {previews &&
+              (c.thumbnailUrl && !brokenThumbs.has(c.id) ? (
+                <img
+                  className="menu-thumb"
+                  src={c.thumbnailUrl}
+                  alt=""
+                  loading="lazy"
+                  onError={() => setBrokenThumbs((prev) => new Set(prev).add(c.id))}
+                />
+              ) : (
+                // Cover URL missing or expired — hold the slot so rows align.
+                <span className="menu-thumb" aria-hidden="true" />
+              ))}
             <span className="list-main list-title">
               {busyId === c.id ? (inIds.has(c.id) ? 'Removing…' : 'Adding…') : c.name}
             </span>
