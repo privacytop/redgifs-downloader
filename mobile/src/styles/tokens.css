@@ -189,7 +189,9 @@ button { font-family: inherit; color: inherit; }
   gap: 8px;
   margin-bottom: 14px;
 }
-.screen-header .title { flex: 1; min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* line-height/padding give the serif's descenders (the "g" tail) room so
+   overflow:hidden — needed for the ellipsis — doesn't clip them. */
+.screen-header .title { flex: 1; min-width: 0; margin: 0; line-height: 1.2; padding-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .screen-header-back { margin-left: -8px; }
 .screen-header-right { flex: none; margin-left: auto; }
 
