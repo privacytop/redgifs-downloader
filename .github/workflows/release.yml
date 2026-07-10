@@ -115,8 +115,15 @@ jobs:
           if gh release view "v$V" > /dev/null 2>&1; then
             echo "v$V exists — build will (re)upload."
           else
+            # Notes = commit subjects since the previous desktop release that
+            # touched this track's code.
+            PREV=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
+              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "v$V" | head -n1 || true)
+            [ -n "$PREV" ] && RANGE="$PREV..HEAD" || RANGE="HEAD"
+            git log --no-merges --pretty=format:'- %s' "$RANGE" -- desktop packages/core > "$RUNNER_TEMP/notes.md"
+            [ -s "$RUNNER_TEMP/notes.md" ] || echo "- Desktop v$V" > "$RUNNER_TEMP/notes.md"
             gh release create "v$V" --title "Desktop v$V" \
-              --notes "Automated desktop release v$V" --target "$GITHUB_SHA"
+              --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA"
           fi
 
   desktop-build:
@@ -199,6 +206,8 @@ jobs:
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -239,7 +248,15 @@ jobs:
           # created here, never before a successful compile.
           V="${{ needs.android-prepare.outputs.version }}"
           if ! gh release view "android-v$V" >/dev/null 2>&1; then
+            # Notes = commit subjects since the previous android release that
+            # touched this track's code (paths are repo-root relative via -C).
+            PREV=$(git tag --list 'android-v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname \
+              | grep -E '^android-v[0-9]+\.[0-9]+\.[0-9]+$' | grep -vx "android-v$V" | head -n1 || true)
+            [ -n "$PREV" ] && RANGE="$PREV..HEAD" || RANGE="HEAD"
+            git -C "$GITHUB_WORKSPACE" log --no-merges --pretty=format:'- %s' "$RANGE" \
+              -- mobile packages/core > "$RUNNER_TEMP/notes.md"
+            [ -s "$RUNNER_TEMP/notes.md" ] || echo "- Android v$V" > "$RUNNER_TEMP/notes.md"
             gh release create "android-v$V" --title "Android v$V" \
-              --notes "Automated Android release v$V" --target "$GITHUB_SHA"
+              --notes-file "$RUNNER_TEMP/notes.md" --target "$GITHUB_SHA"
           fi
           gh release upload "android-v$V" "$RUNNER_TEMP/RedLoader-$V.apk" --clobber
