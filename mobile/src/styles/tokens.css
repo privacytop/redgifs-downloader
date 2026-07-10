@@ -344,32 +344,69 @@ button { font-family: inherit; color: inherit; }
 }
 .tile-sub { font-family: var(--mono); font-size: 10px; color: var(--mut); margin-top: 4px; }
 
-/* --- Sort menu (the one sort control, a styled native select) --------------- */
+/* --- Sort menu (custom dropdown — not a native select) ---------------------- */
 .sortmenu { position: relative; display: inline-flex; }
-.sortmenu select {
-  appearance: none;
-  -webkit-appearance: none;
+.sortmenu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   font-family: var(--mono);
   font-size: 11px;
+  letter-spacing: 0.04em;
   color: var(--cream);
   background: var(--panel);
   border: 1px solid var(--line2);
   border-radius: 999px;
-  padding: 7px 28px 7px 13px;
+  padding: 7px 11px 7px 12px;
   cursor: pointer;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
 }
-.sortmenu::after {
-  content: '';
+.sortmenu-trigger:active { transform: translateY(0.5px); }
+.sortmenu.open .sortmenu-trigger { border-color: var(--ember); background: #17141c; }
+.sortmenu-lead { width: 14px; height: 14px; color: var(--mut); flex: none; }
+.sortmenu.open .sortmenu-lead { color: var(--ember2); }
+.sortmenu-label { min-width: 34px; }
+.sortmenu-chev { width: 13px; height: 13px; color: var(--mut); transition: transform var(--t-fast) var(--ease); }
+.sortmenu.open .sortmenu-chev { transform: rotate(180deg); color: var(--ember2); }
+
+.sortmenu-pop {
   position: absolute;
-  right: 12px;
-  top: 50%;
-  width: 6px;
-  height: 6px;
-  border-right: 1.5px solid var(--mut);
-  border-bottom: 1.5px solid var(--mut);
-  transform: translateY(-70%) rotate(45deg);
-  pointer-events: none;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 172px;
+  padding: 6px;
+  background: #17141c;
+  border: 1px solid var(--line2);
+  border-radius: 14px;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.3);
+  transform-origin: top right;
+  animation: menu-pop 0.14s var(--ease);
 }
+@keyframes menu-pop {
+  from { opacity: 0; transform: scale(0.94) translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.sortmenu-opt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--mut);
+  background: none;
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 11px;
+  cursor: pointer;
+  text-align: left;
+}
+.sortmenu-opt:active { background: var(--line); }
+.sortmenu-opt.on { color: var(--ember2); }
+.sortmenu-opt svg { width: 14px; height: 14px; color: var(--ember); flex: none; }
+
 .feed-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 
 /* --- Chips ------------------------------------------------------------------ */

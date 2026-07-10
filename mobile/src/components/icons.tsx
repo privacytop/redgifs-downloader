@@ -43,6 +43,12 @@ export const IconX = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
 export const IconCheck = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
   <svg {...base(p)}><path d="M20 6 9 17l-5-5" /></svg>
 )
+export const IconSort = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
+  <svg {...base(p)}><path d="M4 6h16" /><path d="M7 12h10" /><path d="M10 18h4" /></svg>
+)
+export const IconChevronDown = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
+  <svg {...base(p)}><path d="m6 9 6 6 6-6" /></svg>
+)
 export const IconPlus = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
   <svg {...base(p)}><path d="M12 5v14" /><path d="M5 12h14" /></svg>
 )
