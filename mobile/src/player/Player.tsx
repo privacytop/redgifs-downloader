@@ -42,7 +42,6 @@ const MUTE_KEY = 'player:muted'
 const DOUBLE_TAP_MS = 280
 const SPEED_KEY = 'player:speed'
 const CONTROL_HIDE_MS = 3000
-const VIDEO_POOL_SIZE = 6
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const
 
 /**
@@ -54,7 +53,7 @@ const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const
 export default function Player({ source, onClose, onSave, onCollect }: PlayerProps): React.JSX.Element {
   const notify = useToast()
   const navigate = useNavigate()
-  const { tapBehavior, quality } = useSettings()
+  const { tapBehavior, effectiveStreamQuality, videoPoolSize } = useSettings()
   const { authenticated } = useAuth()
 
   const [items, setItems] = useState<Content[]>(source.items)
@@ -66,7 +65,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       source.items.map((item) => item.id),
       source.index,
       [],
-      VIDEO_POOL_SIZE
+      videoPoolSize
     )
   )
   const [playing, setPlaying] = useState(true)
@@ -113,10 +112,10 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         items.map((item) => item.id),
         index,
         resident,
-        VIDEO_POOL_SIZE
+        videoPoolSize
       )
     )
-  }, [index, items])
+  }, [index, items, videoPoolSize])
 
   const currentVideo = useCallback(
     (): HTMLVideoElement | undefined => videoRefs.current.get(itemsRef.current[indexRef.current]?.id ?? ''),
@@ -469,7 +468,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
                   else videoRefs.current.delete(c.id)
                 }}
                 className="player-video"
-                src={pickUrl(c, quality)}
+                src={pickUrl(c, effectiveStreamQuality)}
                 posterKey={`media:${c.id}`}
                 posterUrl={c.urls.thumbnail || c.urls.poster}
                 loop

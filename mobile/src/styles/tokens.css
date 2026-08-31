@@ -846,6 +846,18 @@ button { font-family: inherit; color: inherit; }
 }
 .set-label { font-size: 15px; color: var(--ink); }
 .set-hint { font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 3px; }
+.set-number {
+  width: 76px;
+  flex: none;
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  background: var(--panel2);
+  color: var(--ink);
+  padding: 9px 8px;
+  font: 12px var(--mono);
+  text-align: center;
+}
+.set-number:focus { outline: none; border-color: var(--ember); }
 
 /* --- Progress + pills (downloads) ------------------------------------------- */
 .list-row {

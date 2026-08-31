@@ -28,7 +28,7 @@ export function PlayerProvider({ children }: { children: ReactNode }): React.JSX
   const [source, setSource] = useState<PlaySource | null>(null)
   const [collectFor, setCollectFor] = useState<Content | null>(null)
   const { enqueue } = useDownloads()
-  const { quality } = useSettings()
+  const { downloadQuality } = useSettings()
   const { authenticated } = useAuth()
   const notify = useToast()
 
@@ -48,10 +48,10 @@ export function PlayerProvider({ children }: { children: ReactNode }): React.JSX
 
   const save = useCallback(
     (c: Content) => {
-      enqueue([c], `@${c.username}`, quality)
-      notify(`Saving @${c.username} to your gallery (${quality.toUpperCase()})`, 'success')
+      enqueue([c], `@${c.username}`, downloadQuality)
+      notify(`Saving @${c.username} to your gallery (${downloadQuality.toUpperCase()})`, 'success')
     },
-    [enqueue, quality, notify]
+    [downloadQuality, enqueue, notify]
   )
 
   const collect = useCallback(
