@@ -15,6 +15,7 @@ import SortMenu from '../components/SortMenu'
 import ScreenHeader from '../components/ScreenHeader'
 import MediaGrid from '../components/MediaGrid'
 import { formatCount } from '../lib/format'
+import { CachedImage } from '../components/CachedMedia'
 
 type View = 'media' | 'collections' | 'likes'
 const RENDER_BATCH = 60
@@ -190,7 +191,12 @@ function Collections(): React.JSX.Element {
         >
           <div className="tile-cover">
             {c.thumbnailUrl ? (
-              <img src={c.thumbnailUrl} alt="" loading="lazy" />
+              <CachedImage
+                cacheKey={`collection:${c.id}`}
+                src={c.thumbnailUrl}
+                alt=""
+                loading="lazy"
+              />
             ) : (
               <div className="avatar" style={{ position: 'absolute', inset: 0, borderRadius: 0 }}>
                 {(c.name[0] ?? '#').toUpperCase()}

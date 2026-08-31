@@ -24,6 +24,8 @@ import {
   IconX
 } from '../components/icons'
 import { PictureInPicture } from '../plugins/pictureInPicture'
+import { CachedVideo } from '../components/CachedMedia'
+import { updateVideoPool } from './videoPool'
 
 interface PlayerProps {
   source: PlaySource
@@ -40,6 +42,7 @@ const MUTE_KEY = 'player:muted'
 const DOUBLE_TAP_MS = 280
 const SPEED_KEY = 'player:speed'
 const CONTROL_HIDE_MS = 3000
+const VIDEO_POOL_SIZE = 6
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const
 
 /**
@@ -57,6 +60,14 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   const [items, setItems] = useState<Content[]>(source.items)
   const [index, setIndex] = useState(
     Math.min(Math.max(source.index, 0), Math.max(source.items.length - 1, 0))
+  )
+  const [residentVideoIds, setResidentVideoIds] = useState<string[]>(() =>
+    updateVideoPool(
+      source.items.map((item) => item.id),
+      source.index,
+      [],
+      VIDEO_POOL_SIZE
+    )
   )
   const [playing, setPlaying] = useState(true)
   const [muted, setMuted] = useState<boolean>(() => {
@@ -95,6 +106,17 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   const controlsTimerRef = useRef<number | null>(null)
 
   const current = items[index]
+
+  useEffect(() => {
+    setResidentVideoIds((resident) =>
+      updateVideoPool(
+        items.map((item) => item.id),
+        index,
+        resident,
+        VIDEO_POOL_SIZE
+      )
+    )
+  }, [index, items])
 
   const currentVideo = useCallback(
     (): HTMLVideoElement | undefined => videoRefs.current.get(itemsRef.current[indexRef.current]?.id ?? ''),
@@ -153,7 +175,6 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
 
   // Per-clip reset + start playback; like reflects the shared cache.
   useEffect(() => {
-    setProgress(0)
     setMediaDuration(current?.duration ?? 0)
     setLiked(current ? isLiked(current.id) : false)
     if (current) setFollowing(isFollowing(current.username))
@@ -166,16 +187,20 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       })
     }
     for (const [id, v] of videoRefs.current) {
-      if (id !== current?.id) {
-        v.pause()
-        if (v.currentTime !== 0) v.currentTime = 0
-      }
+      if (id !== current?.id) v.pause()
     }
     const v = currentVideo()
-    if (v && wantPlayingRef.current) {
-      v.muted = muted
-      v.playbackRate = speed
-      v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+    if (v) {
+      const duration = Number.isFinite(v.duration) ? v.duration : current?.duration ?? 0
+      setMediaDuration(duration)
+      setProgress(duration > 0 ? v.currentTime / duration : 0)
+      if (wantPlayingRef.current) {
+        v.muted = muted
+        v.playbackRate = speed
+        v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+      }
+    } else {
+      setProgress(0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id])
@@ -412,8 +437,10 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     )
   }
 
-  const first = Math.max(0, index - 1)
-  const slides = items.slice(first, Math.min(items.length, index + 2))
+  const residentSet = new Set(residentVideoIds)
+  const slides = items
+    .map((content, itemIndex) => ({ content, itemIndex }))
+    .filter(({ content }) => residentSet.has(content.id))
 
   return (
     <div
@@ -424,8 +451,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       onWheel={onWheel}
     >
       <div className="player-deck">
-        {slides.map((c, s) => {
-          const i = first + s
+        {slides.map(({ content: c, itemIndex: i }) => {
           const isCurrent = i === index
           const offset = (i - index) * 100
           return (
@@ -437,14 +463,15 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
                 transition: startY.current !== null ? 'none' : undefined
               }}
             >
-              <video
+              <CachedVideo
                 ref={(el) => {
                   if (el) videoRefs.current.set(c.id, el)
                   else videoRefs.current.delete(c.id)
                 }}
                 className="player-video"
                 src={pickUrl(c, quality)}
-                poster={c.urls.thumbnail || c.urls.poster}
+                posterKey={`media:${c.id}`}
+                posterUrl={c.urls.thumbnail || c.urls.poster}
                 loop
                 playsInline
                 muted={!isCurrent || muted}

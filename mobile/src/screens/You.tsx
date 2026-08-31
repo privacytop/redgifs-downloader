@@ -9,6 +9,7 @@ import type { UserProfile } from '@redloader/core'
 import { IconGear, IconUser } from '../components/icons'
 import ScreenHeader from '../components/ScreenHeader'
 import IconButton from '../components/IconButton'
+import { CachedImage } from '../components/CachedMedia'
 
 /** Account + profile: sign in/out, stats, blocked tags, preferences, settings. */
 export default function You(): React.JSX.Element {
@@ -77,7 +78,9 @@ export default function You(): React.JSX.Element {
         <>
           <div className="creator" style={{ marginBottom: 18 }}>
             <div className="avatar" aria-hidden="true">
-              {profile?.profilePic ? <img src={profile.profilePic} alt="" /> : (username?.[0] ?? '?').toUpperCase()}
+              {profile?.profilePic ? (
+                <CachedImage cacheKey={`creator:${username ?? 'me'}`} src={profile.profilePic} alt="" />
+              ) : (username?.[0] ?? '?').toUpperCase()}
             </div>
             <div className="creator-info">
               <div className="creator-name">@{username}</div>

@@ -7,6 +7,7 @@ import ScreenHeader from '../components/ScreenHeader'
 import { useToast } from '../context/toast'
 import { formatCount } from '../lib/format'
 import type { Niche, UserResult } from '@redloader/core'
+import { CachedImage } from '../components/CachedMedia'
 
 /**
  * Search results for a query taken from the route (/search/:query). Three
@@ -72,7 +73,11 @@ export default function Search(): React.JSX.Element {
             >
               <div className="avatar">
                 {u.profileImageUrl ? (
-                  <img src={u.profileImageUrl} alt="" />
+                  <CachedImage
+                    cacheKey={`creator:${u.username}`}
+                    src={u.profileImageUrl}
+                    alt=""
+                  />
                 ) : (
                   (u.name || u.username || '?').charAt(0).toUpperCase()
                 )}

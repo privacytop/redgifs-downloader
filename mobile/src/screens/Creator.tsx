@@ -9,6 +9,7 @@ import { useAuth } from '../context/auth'
 import { FOLLOW_EVENT, isFollowing, loadFollows, setFollow, type FollowChange } from '../lib/follows'
 import { formatCount } from '../lib/format'
 import type { UserProfile } from '@redloader/core'
+import { CachedImage } from '../components/CachedMedia'
 
 const MAX_TAGS = 16
 
@@ -80,7 +81,9 @@ export default function Creator(): React.JSX.Element {
 
       <div className="creator" style={{ marginTop: 4 }}>
         <div className="avatar">
-          {profile?.profilePic ? <img src={profile.profilePic} alt="" /> : initial}
+          {profile?.profilePic ? (
+            <CachedImage cacheKey={`creator:${username}`} src={profile.profilePic} alt="" />
+          ) : initial}
         </div>
         <div className="creator-info">
           <div className="creator-name">@{username}</div>

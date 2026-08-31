@@ -4,6 +4,7 @@ import type { TagSuggestion, UserResult } from '@redloader/core'
 import { api } from '../lib/api'
 import { formatCount } from '../lib/format'
 import { useToast } from '../context/toast'
+import { CachedImage } from './CachedMedia'
 
 type Option =
   | { key: string; kind: 'creator'; label: string; sub: string; creator: UserResult }
@@ -150,7 +151,13 @@ export default function SmartSearch(): React.JSX.Element {
               >
                 {option.kind === 'creator' ? (
                   <span className="smart-search-avatar">
-                    {option.creator.profileImageUrl ? <img src={option.creator.profileImageUrl} alt="" /> : '@'}
+                    {option.creator.profileImageUrl ? (
+                      <CachedImage
+                        cacheKey={`creator:${option.creator.username}`}
+                        src={option.creator.profileImageUrl}
+                        alt=""
+                      />
+                    ) : '@'}
                   </span>
                 ) : (
                   <span className="smart-search-tag">#</span>

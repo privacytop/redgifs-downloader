@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import type { Content } from '@redloader/core'
 import { formatViews } from '../lib/format'
+import { CachedImage } from './CachedMedia'
 
 interface MediaCardProps {
   content: Content
@@ -15,7 +16,15 @@ export default function MediaCard({ content, onOpen, badge }: MediaCardProps): R
 
   return (
     <div className="card">
-      {poster && <img className="card-img" src={poster} alt="" loading="lazy" />}
+      {poster && (
+        <CachedImage
+          cacheKey={`media:${content.id}`}
+          className="card-img"
+          src={poster}
+          alt=""
+          loading="lazy"
+        />
+      )}
       <div className="card-scrim" />
       {badge && <span className="card-badge">{badge}</span>}
       <button

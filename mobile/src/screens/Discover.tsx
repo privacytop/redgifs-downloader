@@ -10,6 +10,7 @@ import { formatCount } from '../lib/format'
 import type { SortKey } from '../lib/sort'
 import type { Niche, UserResult } from '@redloader/core'
 import SmartSearch from '../components/SmartSearch'
+import { CachedImage } from '../components/CachedMedia'
 
 const MAX_CREATORS = 12
 
@@ -80,7 +81,12 @@ export default function Discover(): React.JSX.Element {
           >
             <div className="avatar">
               {c.profileImageUrl ? (
-                <img src={c.profileImageUrl} alt="" loading="lazy" />
+                <CachedImage
+                  cacheKey={`creator:${c.username}`}
+                  src={c.profileImageUrl}
+                  alt=""
+                  loading="lazy"
+                />
               ) : (
                 (c.name || c.username || '?').charAt(0).toUpperCase()
               )}
