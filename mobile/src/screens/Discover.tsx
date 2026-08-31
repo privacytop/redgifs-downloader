@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
-import { useToast } from '../context/toast'
 import { useCachedResource } from '../hooks/useCachedResource'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
@@ -10,6 +9,7 @@ import SortMenu from '../components/SortMenu'
 import { formatCount } from '../lib/format'
 import type { SortKey } from '../lib/sort'
 import type { Niche, UserResult } from '@redloader/core'
+import SmartSearch from '../components/SmartSearch'
 
 const MAX_CREATORS = 12
 
@@ -22,8 +22,6 @@ const MAX_CREATORS = 12
  */
 export default function Discover(): React.JSX.Element {
   const navigate = useNavigate()
-  const notify = useToast()
-  const [query, setQuery] = useState('')
 
   // `order=trending` returns an empty cursor set for creators (gifs/search
   // quirk); `best` populates.
@@ -36,15 +34,6 @@ export default function Discover(): React.JSX.Element {
 
   const feed = usePagedFeed((p) => api.searchGifs({ order: 'latest', page: p }), [], 'feed:discover')
   const [sort, setSort] = useState<SortKey>('default')
-
-  const submitSearch = (): void => {
-    const q = query.trim()
-    if (!q) {
-      notify('Type something to search', 'warning')
-      return
-    }
-    navigate(`/search/${encodeURIComponent(q)}`)
-  }
 
   const openCreator = (username: string): void => {
     navigate(`/creator/${encodeURIComponent(username)}`)
@@ -59,18 +48,7 @@ export default function Discover(): React.JSX.Element {
       <ScreenHeader title="Discover" />
 
       <div style={{ margin: '0 0 4px' }}>
-        <input
-          className="search"
-          type="search"
-          value={query}
-          placeholder="Search creators, tags, videos…"
-          aria-label="Search"
-          enterKeyHint="search"
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submitSearch()
-          }}
-        />
+        <SmartSearch />
       </div>
 
       <div className="section-label">Trending creators</div>

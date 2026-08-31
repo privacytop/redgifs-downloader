@@ -17,6 +17,8 @@ export interface PlaySource {
 interface PlayerCtx {
   open: (src: PlaySource) => void
   close: () => void
+  /** Close the collection sheet first, then the player. */
+  dismissTop: () => boolean
 }
 
 const Ctx = createContext<PlayerCtx | null>(null)
@@ -32,6 +34,17 @@ export function PlayerProvider({ children }: { children: ReactNode }): React.JSX
 
   const open = useCallback((src: PlaySource) => setSource(src), [])
   const close = useCallback(() => setSource(null), [])
+  const dismissTop = useCallback((): boolean => {
+    if (collectFor) {
+      setCollectFor(null)
+      return true
+    }
+    if (source) {
+      setSource(null)
+      return true
+    }
+    return false
+  }, [collectFor, source])
 
   const save = useCallback(
     (c: Content) => {
@@ -53,7 +66,7 @@ export function PlayerProvider({ children }: { children: ReactNode }): React.JSX
   )
 
   return (
-    <Ctx.Provider value={{ open, close }}>
+    <Ctx.Provider value={{ open, close, dismissTop }}>
       {children}
       {source && <Player source={source} onClose={close} onSave={save} onCollect={collect} />}
       {collectFor && (

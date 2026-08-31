@@ -16,6 +16,7 @@ import Library from './screens/Library'
 import CollectionDetail from './screens/CollectionDetail'
 import Downloads from './screens/Downloads'
 import You from './screens/You'
+import BackButtonHandler from './components/BackButtonHandler'
 
 export default function App(): React.JSX.Element {
   // HashRouter wraps PlayerProvider because the player (mounted by the
@@ -27,6 +28,7 @@ export default function App(): React.JSX.Element {
         <DownloadsProvider>
           <HashRouter>
             <PlayerProvider>
+              <BackButtonHandler />
               <div className="app">
                 <div className="app-body">
                   <Routes>
