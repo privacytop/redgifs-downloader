@@ -16,12 +16,14 @@ import {
   IconDownload,
   IconHeart,
   IconMuted,
+  IconPictureInPicture,
   IconPlay,
   IconPlus,
   IconSound,
   IconUser,
   IconX
 } from '../components/icons'
+import { PictureInPicture } from '../plugins/pictureInPicture'
 
 interface PlayerProps {
   source: PlaySource
@@ -36,6 +38,9 @@ const STEP_LOCK_MS = 320
 const PREFETCH_WITHIN = 3
 const MUTE_KEY = 'player:muted'
 const DOUBLE_TAP_MS = 280
+const SPEED_KEY = 'player:speed'
+const CONTROL_HIDE_MS = 3000
+const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const
 
 /**
  * Full-screen swipe/wheel player: drag or scroll-wheel up/down to move between
@@ -65,8 +70,16 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   const [following, setFollowing] = useState(false)
   const [collected, setCollected] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [mediaDuration, setMediaDuration] = useState(source.items[source.index]?.duration ?? 0)
   const [drag, setDrag] = useState(0)
   const [heartBurst, setHeartBurst] = useState(false)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const [speedOpen, setSpeedOpen] = useState(false)
+  const [pipMode, setPipMode] = useState(false)
+  const [speed, setSpeed] = useState<number>(() => {
+    const saved = Number(localStorage.getItem(SPEED_KEY) ?? 1)
+    return SPEEDS.includes(saved as (typeof SPEEDS)[number]) ? saved : 1
+  })
 
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
   const itemsRef = useRef(items)
@@ -79,6 +92,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   const wheelAccRef = useRef(0)
   const stepLockRef = useRef(false)
   const lastTapRef = useRef(0)
+  const controlsTimerRef = useRef<number | null>(null)
 
   const current = items[index]
 
@@ -86,6 +100,17 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     (): HTMLVideoElement | undefined => videoRefs.current.get(itemsRef.current[indexRef.current]?.id ?? ''),
     []
   )
+
+  const showControls = useCallback((): void => {
+    setControlsVisible(true)
+    if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current)
+    if (wantPlayingRef.current) {
+      controlsTimerRef.current = window.setTimeout(() => {
+        setControlsVisible(false)
+        setSpeedOpen(false)
+      }, CONTROL_HIDE_MS)
+    }
+  }, [])
 
   const maybeLoadMore = useCallback(
     async (nextIndex: number): Promise<void> => {
@@ -129,6 +154,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   // Per-clip reset + start playback; like reflects the shared cache.
   useEffect(() => {
     setProgress(0)
+    setMediaDuration(current?.duration ?? 0)
     setLiked(current ? isLiked(current.id) : false)
     if (current) setFollowing(isFollowing(current.username))
     // Collection membership lives in sqlite; reflect it (async) per clip.
@@ -148,10 +174,41 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     const v = currentVideo()
     if (v && wantPlayingRef.current) {
       v.muted = muted
+      v.playbackRate = speed
       v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id])
+
+  useEffect(() => {
+    for (const video of videoRefs.current.values()) video.playbackRate = speed
+    localStorage.setItem(SPEED_KEY, String(speed))
+  }, [speed])
+
+  useEffect(() => {
+    if (playing) showControls()
+    else {
+      if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current)
+      setControlsVisible(true)
+    }
+  }, [playing, current?.id, showControls])
+
+  useEffect(() => {
+    let disposed = false
+    let remove: (() => Promise<void>) | undefined
+    const dims = { width: current?.width || 9, height: current?.height || 16 }
+    void PictureInPicture.setActive({ active: true, ...dims }).catch(() => undefined)
+    void PictureInPicture.addListener('pipModeChanged', ({ active }) => setPipMode(active)).then((handle) => {
+      if (disposed) void handle.remove()
+      else remove = handle.remove
+    })
+    return () => {
+      disposed = true
+      if (remove) void remove()
+      void PictureInPicture.setActive({ active: false }).catch(() => undefined)
+      if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current)
+    }
+  }, [current?.height, current?.width])
 
   // Load the shared caches once, then reflect them; listen for changes so a
   // like/follow made anywhere (or on revisiting a clip) shows here.
@@ -209,7 +266,8 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       wantPlayingRef.current = false
       v.pause()
     }
-  }, [currentVideo])
+    showControls()
+  }, [currentVideo, showControls])
 
   const seekTo = useCallback(
     (fraction: number): void => {
@@ -262,6 +320,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   }, [current, following, notify, authenticated])
 
   const onVideoTap = useCallback((): void => {
+    showControls()
     const now = Date.now()
     if (now - lastTapRef.current < DOUBLE_TAP_MS) {
       lastTapRef.current = 0
@@ -277,7 +336,18 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         }
       }, DOUBLE_TAP_MS)
     }
-  }, [likeFromDoubleTap, tapBehavior, togglePlay])
+  }, [likeFromDoubleTap, showControls, tapBehavior, togglePlay])
+
+  const enterPip = async (): Promise<void> => {
+    if (!current) return
+    setSpeedOpen(false)
+    try {
+      const result = await PictureInPicture.enter({ width: current.width, height: current.height })
+      if (result.active) setPipMode(true)
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Picture-in-picture is unavailable', 'warning')
+    }
+  }
 
   const goCreator = (): void => {
     if (!current) return
@@ -292,6 +362,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
 
   // --- gestures -------------------------------------------------------------
   const onTouchStart = (e: React.TouchEvent): void => {
+    showControls()
     startY.current = e.touches[0].clientY
   }
   const onTouchMove = (e: React.TouchEvent): void => {
@@ -346,7 +417,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
 
   return (
     <div
-      className="player"
+      className={`player ${pipMode ? 'pip' : ''} ${controlsVisible || !playing ? '' : 'controls-hidden'}`}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
@@ -384,7 +455,18 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
                   isCurrent
                     ? (e) => {
                         const v = e.currentTarget
-                        if (v.duration) setProgress(v.currentTime / v.duration)
+                        if (v.duration) {
+                          setMediaDuration(v.duration)
+                          setProgress(v.currentTime / v.duration)
+                        }
+                      }
+                    : undefined
+                }
+                onLoadedMetadata={
+                  isCurrent
+                    ? (e) => {
+                        e.currentTarget.playbackRate = speed
+                        if (e.currentTarget.duration) setMediaDuration(e.currentTarget.duration)
                       }
                     : undefined
                 }
@@ -396,7 +478,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         })}
       </div>
 
-      <div className="player-scrim" />
+      <div className="player-scrim player-chrome" />
 
       {heartBurst && (
         <div className="player-heart-burst" aria-hidden="true">
@@ -410,16 +492,51 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         </div>
       )}
 
-      <div className="player-top">
+      <div className="player-top player-chrome">
         <span className="player-chip">
           {source.label} · {index + 1}/{items.length}
         </span>
-        <button className="player-close" onClick={onClose} aria-label="Close">
-          <IconX />
-        </button>
+        <div className="player-top-actions">
+          <div className="player-speed-wrap">
+            <button
+              className="player-tool"
+              onClick={() => {
+                showControls()
+                setSpeedOpen((v) => !v)
+              }}
+              aria-label="Playback speed"
+              aria-expanded={speedOpen}
+            >
+              {speed}×
+            </button>
+            {speedOpen && (
+              <div className="player-speed-menu">
+                {SPEEDS.map((value) => (
+                  <button
+                    key={value}
+                    className={value === speed ? 'on' : ''}
+                    onClick={() => {
+                      setSpeed(value)
+                      setSpeedOpen(false)
+                      showControls()
+                    }}
+                  >
+                    {value}×
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button className="player-tool" onClick={() => void enterPip()} aria-label="Picture in picture">
+            <IconPictureInPicture />
+          </button>
+          <button className="player-close" onClick={onClose} aria-label="Close">
+            <IconX />
+          </button>
+        </div>
       </div>
 
-      <div className="player-rail">
+      <div className="player-rail player-chrome">
         <RailBtn label="Like" on={liked} onClick={() => void toggleLike()}>
           <IconHeart style={liked ? { fill: 'var(--ember)', stroke: 'var(--ember)' } : undefined} />
         </RailBtn>
@@ -438,7 +555,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         )}
       </div>
 
-      <div className="player-info">
+      <div className="player-info player-chrome">
         <div className="player-id">
           <button
             className={`player-follow ${following ? 'on' : ''}`}
@@ -466,8 +583,13 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         )}
       </div>
 
+      <div className="player-timebar player-chrome">
+        <span>{formatDuration(progress * mediaDuration)}</span>
+        <span>−{formatDuration(Math.max(0, mediaDuration * (1 - progress)))}</span>
+      </div>
+
       <div
-        className="player-scrub"
+        className="player-scrub player-chrome"
         onTouchStart={(e) => e.stopPropagation()}
         onTouchMove={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
@@ -481,6 +603,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
           aria-label="Playback position"
           style={{ '--progress': `${Math.round(progress * 100)}%` } as React.CSSProperties}
           onChange={(e) => seekTo(Number(e.currentTarget.value) / 1000)}
+          onPointerDown={showControls}
         />
       </div>
     </div>

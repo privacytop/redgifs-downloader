@@ -73,3 +73,6 @@ export const IconMuted = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
 export const IconSound = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
   <svg {...base(p)}><path d="M11 5 6 9H2v6h4l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7" /><path d="M19 5a9 9 0 0 1 0 14" /></svg>
 )
+export const IconPictureInPicture = (p: SVGProps<SVGSVGElement>): React.JSX.Element => (
+  <svg {...base(p)}><rect x="3" y="5" width="18" height="14" rx="2" /><rect x="12" y="11" width="7" height="5" rx="1" /></svg>
+)

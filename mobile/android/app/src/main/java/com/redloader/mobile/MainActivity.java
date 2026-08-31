@@ -1,5 +1,6 @@
 package com.redloader.mobile;
 
+import android.content.res.Configuration;
 import android.os.Bundle;
 
 import com.getcapacitor.BridgeActivity;
@@ -10,6 +11,19 @@ public class MainActivity extends BridgeActivity {
     // Register the local plugins before the bridge loads.
     registerPlugin(AuthCapturePlugin.class);
     registerPlugin(MediaSaverPlugin.class);
+    registerPlugin(PictureInPicturePlugin.class);
     super.onCreate(savedInstanceState);
+  }
+
+  @Override
+  public void onUserLeaveHint() {
+    super.onUserLeaveHint();
+    PictureInPicturePlugin.enterFromUserLeave(this);
+  }
+
+  @Override
+  public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+    super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+    PictureInPicturePlugin.notifyModeChanged(isInPictureInPictureMode);
   }
 }

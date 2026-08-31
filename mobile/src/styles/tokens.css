@@ -517,6 +517,9 @@ button { font-family: inherit; color: inherit; }
   overflow: hidden;
   touch-action: none;
 }
+.player-chrome { transition: opacity 180ms ease; }
+.player.controls-hidden .player-chrome { opacity: 0; pointer-events: none; }
+.player.pip .player-chrome, .player.pip .player-paused, .player.pip .player-heart-burst { display: none; }
 .player-deck { position: absolute; inset: 0; }
 .player-slide {
   position: absolute;
@@ -562,7 +565,7 @@ button { font-family: inherit; color: inherit; }
   padding: 6px 12px;
   backdrop-filter: blur(6px);
 }
-.player-close, .player-rail-btn {
+.player-close, .player-rail-btn, .player-tool {
   width: 44px;
   height: 44px;
   display: grid;
@@ -575,6 +578,34 @@ button { font-family: inherit; color: inherit; }
   cursor: pointer;
 }
 .player-close svg { width: 22px; height: 22px; }
+.player-top-actions { display: flex; align-items: center; gap: 8px; }
+.player-tool { font-family: var(--mono); font-size: 11px; }
+.player-tool svg { width: 21px; height: 21px; }
+.player-speed-wrap { position: relative; }
+.player-speed-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(52px, 1fr));
+  gap: 3px;
+  width: 126px;
+  padding: 6px;
+  background: rgba(18,16,22,0.96);
+  border: 1px solid var(--line2);
+  border-radius: 11px;
+  backdrop-filter: blur(8px);
+}
+.player-speed-menu button {
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 5px;
+  background: transparent;
+  color: var(--mut);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.player-speed-menu button.on { background: var(--ember); color: #170a08; }
 .player-rail {
   position: absolute;
   right: 12px;
@@ -592,7 +623,7 @@ button { font-family: inherit; color: inherit; }
   position: absolute;
   left: 14px;
   right: 76px;
-  bottom: calc(var(--safe-bottom) + 20px);
+  bottom: calc(var(--safe-bottom) + 48px);
   z-index: 5;
 }
 .player-id { display: flex; align-items: center; gap: 11px; }
@@ -690,6 +721,19 @@ button { font-family: inherit; color: inherit; }
   display: flex;
   align-items: flex-end;
   touch-action: none;
+}
+.player-timebar {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--safe-bottom) + 19px);
+  z-index: 6;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  color: rgba(245,239,230,0.82);
+  font-family: var(--mono);
+  font-size: 9px;
 }
 .player-scrub input {
   --progress: 0%;
