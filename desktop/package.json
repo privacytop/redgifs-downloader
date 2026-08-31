@@ -14,7 +14,8 @@
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:linux": "electron-vite build && electron-builder --linux",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
-    "test": "vitest run",
+    "test": "npm run test:renderer && npm run test:main",
+    "test:renderer": "vitest run",
     "test:main": "ELECTRON_RUN_AS_NODE=1 electron ./node_modules/vitest/vitest.mjs run --config vitest.main.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },

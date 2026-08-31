@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { decodeJwt, isUserToken } from './jwt'
 
 function jwt(payload: object): string {
-  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url')
+  const b64 = (o: object): string => {
+    const bytes = new TextEncoder().encode(JSON.stringify(o))
+    let binary = ''
+    for (const byte of bytes) binary += String.fromCharCode(byte)
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  }
   return `${b64({ alg: 'HS256' })}.${b64(payload)}.sig`
 }
 

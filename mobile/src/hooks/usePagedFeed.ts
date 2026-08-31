@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Content, ContentResponse } from '@redloader/core'
 import { readCache, writeCache } from '../lib/cache'
+import { LruCache } from '../lib/lru'
 
 interface FeedSnapshot {
   items: Content[]
@@ -12,7 +13,7 @@ interface FeedSnapshot {
 // paginator in memory for the lifetime of the app so returning to a feed shows
 // the exact same recommendations and scrollable pages instead of asking the
 // server for a newly randomized page 1. A full app refresh still revalidates.
-const sessionFeeds = new Map<string, FeedSnapshot>()
+const sessionFeeds = new LruCache<string, FeedSnapshot>(20)
 
 export interface PagedFeed {
   items: Content[]
