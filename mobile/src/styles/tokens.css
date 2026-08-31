@@ -639,11 +639,46 @@ button { font-family: inherit; color: inherit; }
   left: 0;
   right: 0;
   bottom: calc(var(--safe-bottom));
-  height: 3px;
+  height: 26px;
   z-index: 6;
-  background: rgba(255,255,255,0.2);
+  display: flex;
+  align-items: flex-end;
+  touch-action: none;
 }
-.player-scrub i { display: block; height: 100%; background: var(--ember); }
+.player-scrub input {
+  --progress: 0%;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background: transparent;
+}
+.player-scrub input::-webkit-slider-runnable-track {
+  height: 4px;
+  background: linear-gradient(to right, var(--ember) var(--progress), rgba(255,255,255,0.24) var(--progress));
+}
+.player-scrub input::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid var(--cream);
+  border-radius: 50%;
+  background: var(--ember);
+  box-shadow: 0 1px 5px rgba(0,0,0,0.6);
+}
+.player-scrub input::-moz-range-track { height: 4px; background: rgba(255,255,255,0.24); }
+.player-scrub input::-moz-range-progress { height: 4px; background: var(--ember); }
+.player-scrub input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cream);
+  border-radius: 50%;
+  background: var(--ember);
+}
 
 /* --- Toasts ----------------------------------------------------------------- */
 .toasts {

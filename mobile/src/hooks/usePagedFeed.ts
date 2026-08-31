@@ -2,6 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Content, ContentResponse } from '@redloader/core'
 import { readCache, writeCache } from '../lib/cache'
 
+interface FeedSnapshot {
+  items: Content[]
+  page: number
+  pages: number
+}
+
+// Route components unmount when another bottom tab is selected. Keep the full
+// paginator in memory for the lifetime of the app so returning to a feed shows
+// the exact same recommendations and scrollable pages instead of asking the
+// server for a newly randomized page 1. A full app refresh still revalidates.
+const sessionFeeds = new Map<string, FeedSnapshot>()
+
 export interface PagedFeed {
   items: Content[]
   loading: boolean
@@ -27,14 +39,16 @@ export function usePagedFeed(
   const cacheKeyRef = useRef(cacheKey)
   cacheKeyRef.current = cacheKey
 
+  const initialSnapshot = cacheKey ? sessionFeeds.get(cacheKey) : undefined
+
   const [items, setItems] = useState<Content[]>(() =>
-    cacheKey ? (readCache<Content[]>(cacheKey) ?? []) : []
+    initialSnapshot?.items ?? (cacheKey ? (readCache<Content[]>(cacheKey) ?? []) : [])
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const pageRef = useRef(0)
-  const pagesRef = useRef(1)
-  const seen = useRef<Set<string>>(new Set())
+  const pageRef = useRef(initialSnapshot?.page ?? 0)
+  const pagesRef = useRef(initialSnapshot?.pages ?? 1)
+  const seen = useRef<Set<string>>(new Set(initialSnapshot?.items.map((c) => c.id) ?? []))
   const runId = useRef(0)
   const loadingRef = useRef(false)
 
@@ -57,7 +71,16 @@ export function usePagedFeed(
         setItems(fresh)
         if (cacheKeyRef.current) writeCache(cacheKeyRef.current, fresh)
       } else if (fresh.length) {
-        setItems((prev) => [...prev, ...fresh])
+        setItems((prev) => {
+          const merged = [...prev, ...fresh]
+          const key = cacheKeyRef.current
+          if (key) sessionFeeds.set(key, { items: merged, page: pageRef.current, pages: pagesRef.current })
+          return merged
+        })
+      }
+      const key = cacheKeyRef.current
+      if (key && next === 1) {
+        sessionFeeds.set(key, { items: fresh, page: pageRef.current, pages: pagesRef.current })
       }
       return fresh
     } catch (e) {
@@ -81,14 +104,38 @@ export function usePagedFeed(
     pagesRef.current = 1
     seen.current = new Set()
     loadingRef.current = false
+    const key = cacheKeyRef.current
+    if (key) sessionFeeds.delete(key)
     // Paint the cached page-1 immediately (no empty flash), then revalidate.
     setItems(cacheKeyRef.current ? (readCache<Content[]>(cacheKeyRef.current) ?? []) : [])
     setError(null)
     void loadNextRef.current()
   }, [])
 
+  const activate = useCallback(() => {
+    runId.current += 1
+    loadingRef.current = false
+    const key = cacheKeyRef.current
+    const snapshot = key ? sessionFeeds.get(key) : undefined
+    if (snapshot) {
+      pageRef.current = snapshot.page
+      pagesRef.current = snapshot.pages
+      seen.current = new Set(snapshot.items.map((c) => c.id))
+      setItems(snapshot.items)
+      setError(null)
+      setLoading(false)
+      return
+    }
+    pageRef.current = 0
+    pagesRef.current = 1
+    seen.current = new Set()
+    setItems(key ? (readCache<Content[]>(key) ?? []) : [])
+    setError(null)
+    void loadNextRef.current()
+  }, [])
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(reset, deps)
+  useEffect(activate, deps)
 
   return {
     items,

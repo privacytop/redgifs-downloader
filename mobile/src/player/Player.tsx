@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Content } from '@redloader/core'
+import { pickUrl, type Content } from '@redloader/core'
 import type { PlaySource } from './PlayerProvider'
 import { formatViews, formatDuration } from '../lib/format'
 import { useToast } from '../context/toast'
@@ -46,7 +46,7 @@ const DOUBLE_TAP_MS = 280
 export default function Player({ source, onClose, onSave, onCollect }: PlayerProps): React.JSX.Element {
   const notify = useToast()
   const navigate = useNavigate()
-  const { tapBehavior } = useSettings()
+  const { tapBehavior, quality } = useSettings()
   const { authenticated } = useAuth()
 
   const [items, setItems] = useState<Content[]>(source.items)
@@ -211,6 +211,17 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     }
   }, [currentVideo])
 
+  const seekTo = useCallback(
+    (fraction: number): void => {
+      const v = currentVideo()
+      if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
+      const next = Math.min(1, Math.max(0, fraction))
+      v.currentTime = next * v.duration
+      setProgress(next)
+    },
+    [currentVideo]
+  )
+
   const toggleLike = useCallback(async (): Promise<void> => {
     if (!current) return
     const next = !liked
@@ -361,7 +372,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
                   else videoRefs.current.delete(c.id)
                 }}
                 className="player-video"
-                src={c.urls.hd || c.urls.sd}
+                src={pickUrl(c, quality)}
                 poster={c.urls.thumbnail || c.urls.poster}
                 loop
                 playsInline
@@ -455,8 +466,22 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         )}
       </div>
 
-      <div className="player-scrub">
-        <i style={{ width: `${Math.round(progress * 100)}%` }} />
+      <div
+        className="player-scrub"
+        onTouchStart={(e) => e.stopPropagation()}
+        onTouchMove={(e) => e.stopPropagation()}
+        onTouchEnd={(e) => e.stopPropagation()}
+      >
+        <input
+          type="range"
+          min="0"
+          max="1000"
+          step="1"
+          value={Math.round(progress * 1000)}
+          aria-label="Playback position"
+          style={{ '--progress': `${Math.round(progress * 100)}%` } as React.CSSProperties}
+          onChange={(e) => seekTo(Number(e.currentTarget.value) / 1000)}
+        />
       </div>
     </div>
   )
