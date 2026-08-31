@@ -1,125 +1,151 @@
 package com.redloader.mobile;
 
-import android.content.ContentResolver;
-import android.content.ContentValues;
-import android.net.Uri;
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
-import android.os.Environment;
-import android.provider.MediaStore;
-import android.webkit.MimeTypeMap;
 
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
-/**
- * Downloads a media URL straight into the shared gallery via MediaStore, under
- * Movies/RedLoader/<subdir>. Native so the transfer avoids the WebView's CORS
- * and memory limits and the file shows up in the phone's gallery. Foreground
- * only for now (no service) — matches the phase-4 scope.
- */
+import java.lang.ref.WeakReference;
+
+/** Capacitor bridge to the persistent foreground download service. */
 @CapacitorPlugin(name = "MediaSaver")
 public class MediaSaverPlugin extends Plugin {
+  private static final int NOTIFICATION_PERMISSION_REQUEST = 7301;
+  private static WeakReference<MediaSaverPlugin> instance = new WeakReference<>(null);
 
-  private final ExecutorService pool = Executors.newFixedThreadPool(4);
+  @Override
+  public void load() {
+    instance = new WeakReference<>(this);
+  }
 
   @Override
   protected void handleOnDestroy() {
-    pool.shutdownNow();
+    MediaSaverPlugin current = instance.get();
+    if (current == this) instance.clear();
   }
 
   @PluginMethod
-  public void download(final PluginCall call) {
-    final String url = call.getString("url");
-    final String filename = call.getString("filename");
-    final String subdir = call.getString("subdir", "");
-    if (url == null || filename == null) {
-      call.reject("url and filename are required");
+  public void startTask(PluginCall call) {
+    String id = call.getString("id");
+    String label = call.getString("label", "RedLoader download");
+    JSArray suppliedItems = call.getArray("items");
+    if (id == null || id.isEmpty() || suppliedItems == null) {
+      call.reject("id and items are required");
       return;
     }
-    pool.execute(() -> {
-      HttpURLConnection conn = null;
-      try {
-        conn = (HttpURLConnection) new URL(url).openConnection();
-        conn.setRequestProperty("User-Agent", "RedLoader/4.0");
-        conn.setConnectTimeout(20000);
-        conn.setReadTimeout(30000);
-        int code = conn.getResponseCode();
-        if (code != 200) {
-          call.reject("HTTP " + code);
-          return;
-        }
-
-        // Route images and videos to the right MediaStore collection + folder —
-        // filing an image into the Video collection under Movies/ is rejected by
-        // MediaProvider and never shows in the gallery.
-        String ext = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1) : "mp4";
-        String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext.toLowerCase());
-        boolean isImage = mime != null && mime.startsWith("image/");
-        if (mime == null) mime = isImage ? "image/jpeg" : "video/mp4";
-        Uri collection = isImage
-          ? MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-          : MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-        String topDir = isImage ? Environment.DIRECTORY_PICTURES : Environment.DIRECTORY_MOVIES;
-        String relDir = topDir + "/RedLoader" + (subdir.isEmpty() ? "" : "/" + subdir);
-
-        ContentResolver resolver = getContext().getContentResolver();
-        ContentValues values = new ContentValues();
-        values.put(MediaStore.MediaColumns.DISPLAY_NAME, filename);
-        values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-
-        Uri item;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-          values.put(MediaStore.MediaColumns.RELATIVE_PATH, relDir);
-          values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-          item = resolver.insert(collection, values);
-        } else {
-          // Pre-Q: write into the public dir directly.
-          java.io.File dir = new java.io.File(
-            Environment.getExternalStoragePublicDirectory(topDir), "RedLoader");
-          if (!dir.exists()) dir.mkdirs();
-          values.put(MediaStore.MediaColumns.DATA, new java.io.File(dir, filename).getAbsolutePath());
-          item = resolver.insert(collection, values);
-        }
-        if (item == null) {
-          call.reject("could not create gallery entry");
-          return;
-        }
-
-        long total = 0;
-        try (InputStream in = conn.getInputStream(); OutputStream out = resolver.openOutputStream(item)) {
-          byte[] buf = new byte[65536];
-          int n;
-          while ((n = in.read(buf)) != -1) {
-            out.write(buf, 0, n);
-            total += n;
-          }
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-          values.clear();
-          values.put(MediaStore.MediaColumns.IS_PENDING, 0);
-          resolver.update(item, values, null, null);
-        }
-
-        JSObject res = new JSObject();
-        res.put("uri", item.toString());
-        res.put("bytes", total);
-        call.resolve(res);
-      } catch (Exception e) {
-        call.reject(e.getMessage() != null ? e.getMessage() : e.toString());
-      } finally {
-        if (conn != null) conn.disconnect();
+    try {
+      JSONArray items = new JSONArray(suppliedItems.toString());
+      for (int index = 0; index < items.length(); index++) {
+        JSONObject item = items.optJSONObject(index);
+        if (item != null) item.put("status", "queued");
       }
-    });
+      JSONObject task = new JSONObject();
+      task.put("id", id);
+      task.put("label", label);
+      task.put("status", "queued");
+      task.put("createdAt", System.currentTimeMillis());
+      task.put("total", items.length());
+      task.put("done", 0);
+      task.put("failed", 0);
+      task.put("current", "");
+      task.put("items", items);
+      DownloadTaskStore.save(getContext(), task);
+      startService(id, DownloadService.ACTION_START);
+      call.resolve(JSObject.fromJSONObject(task));
+    } catch (Exception error) {
+      call.reject(error.getMessage() != null ? error.getMessage() : error.toString(), error);
+    }
+  }
+
+  @PluginMethod
+  public void listTasks(PluginCall call) {
+    JSObject result = new JSObject();
+    result.put("tasks", DownloadTaskStore.all(getContext()));
+    call.resolve(result);
+  }
+
+  @PluginMethod
+  public void cancelTask(PluginCall call) {
+    String id = call.getString("id");
+    if (id == null || id.isEmpty()) {
+      call.reject("id is required");
+      return;
+    }
+    startService(id, DownloadService.ACTION_CANCEL);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void retryTask(PluginCall call) {
+    String id = call.getString("id");
+    JSONObject task = id != null ? DownloadTaskStore.get(getContext(), id) : null;
+    if (task == null) {
+      call.reject("Download task not found");
+      return;
+    }
+    JSONArray items = task.optJSONArray("items");
+    if (items != null) {
+      for (int index = 0; index < items.length(); index++) {
+        JSONObject item = items.optJSONObject(index);
+        if (item != null && !"completed".equals(item.optString("status"))) {
+          put(item, "status", "queued");
+          put(item, "error", "");
+        }
+      }
+    }
+    put(task, "status", "queued");
+    put(task, "failed", 0);
+    put(task, "error", "");
+    DownloadTaskStore.save(getContext(), task);
+    emitTask(task);
+    startService(id, DownloadService.ACTION_START);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void requestNotificationPermission(PluginCall call) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+      ContextCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS)
+        != PackageManager.PERMISSION_GRANTED) {
+      ActivityCompat.requestPermissions(
+        getActivity(),
+        new String[] { Manifest.permission.POST_NOTIFICATIONS },
+        NOTIFICATION_PERMISSION_REQUEST);
+    }
+    call.resolve();
+  }
+
+  private void startService(String id, String action) {
+    Intent intent = new Intent(getContext(), DownloadService.class)
+      .setAction(action)
+      .putExtra(DownloadService.EXTRA_TASK_ID, id);
+    ContextCompat.startForegroundService(getContext(), intent);
+  }
+
+  static void emitTask(JSONObject task) {
+    MediaSaverPlugin plugin = instance.get();
+    if (plugin == null) return;
+    try {
+      plugin.notifyListeners("taskChanged", JSObject.fromJSONObject(task), true);
+    } catch (Exception ignored) {}
+  }
+
+  private static void put(JSONObject object, String key, Object value) {
+    try {
+      object.put(key, value);
+    } catch (Exception ignored) {}
   }
 }
