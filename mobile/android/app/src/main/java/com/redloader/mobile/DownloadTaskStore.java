@@ -7,6 +7,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +45,12 @@ final class DownloadTaskStore {
         tasks.add(new JSONObject((String) entry.getValue()));
       } catch (Exception ignored) {}
     }
-    tasks.sort(Comparator.comparingLong((JSONObject task) -> task.optLong("createdAt", 0)).reversed());
+    Collections.sort(tasks, new Comparator<JSONObject>() {
+      @Override
+      public int compare(JSONObject left, JSONObject right) {
+        return Long.compare(right.optLong("createdAt", 0), left.optLong("createdAt", 0));
+      }
+    });
     JSONArray result = new JSONArray();
     for (JSONObject task : tasks) result.put(task);
     return result;

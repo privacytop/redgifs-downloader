@@ -15,6 +15,7 @@ import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Locale;
 
 /** Shared, cancellation-aware MediaStore transfer with atomic partial cleanup. */
 final class MediaDownload {
@@ -54,7 +55,7 @@ final class MediaDownload {
       if (cancel.cancelled()) throw new InterruptedIOException("Download cancelled");
 
       String extension = filename.contains(".")
-        ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase() : "mp4";
+        ? filename.substring(filename.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT) : "mp4";
       String mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
       boolean image = mime != null && mime.startsWith("image/");
       if (mime == null) mime = "video/mp4";

@@ -16,6 +16,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.InterruptedIOException;
+import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -31,8 +32,10 @@ public class DownloadService extends Service {
   private static final int NOTIFICATION_ID = 41028;
 
   private final ExecutorService worker = Executors.newSingleThreadExecutor();
-  private final Set<String> scheduled = ConcurrentHashMap.newKeySet();
-  private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
+  private final Set<String> scheduled = Collections.newSetFromMap(
+    new ConcurrentHashMap<String, Boolean>());
+  private final Set<String> cancelled = Collections.newSetFromMap(
+    new ConcurrentHashMap<String, Boolean>());
 
   @Override
   public void onCreate() {

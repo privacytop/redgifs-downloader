@@ -2,7 +2,7 @@ package com.redloader.mobile;
 
 import android.app.Activity;
 import android.app.PictureInPictureParams;
-import android.content.pm.PackageManager;
+import android.annotation.TargetApi;
 import android.os.Build;
 import android.util.Rational;
 
@@ -63,7 +63,7 @@ public class PictureInPicturePlugin extends Plugin {
     if (!playerActive || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
     // Android 12+ uses setAutoEnterEnabled for a smoother gesture transition.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) return;
-    if (!activity.getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return;
+    if (!activity.getPackageManager().hasSystemFeature("android.software.picture_in_picture")) return;
     activity.enterPictureInPictureMode(paramsBuilder().build());
   }
 
@@ -76,9 +76,10 @@ public class PictureInPicturePlugin extends Plugin {
   }
 
   private boolean supported() {
-    return getActivity().getPackageManager().hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE);
+    return getActivity().getPackageManager().hasSystemFeature("android.software.picture_in_picture");
   }
 
+  @TargetApi(Build.VERSION_CODES.O)
   private static PictureInPictureParams.Builder paramsBuilder() {
     return new PictureInPictureParams.Builder().setAspectRatio(safeRatio(videoWidth, videoHeight));
   }
