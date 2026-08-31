@@ -11,6 +11,10 @@ interface AuthCapturePlugin {
   login(): Promise<AuthResult>
   /** Silently mint a fresh user token from the persisted RedGifs web session. */
   refresh(opts?: { previousToken?: string }): Promise<AuthResult>
+  /** Stop any visible or hidden auth WebView. */
+  cancel(): Promise<void>
+  /** Cancel auth and clear RedGifs cookies plus WebView storage. */
+  logout(): Promise<void>
 }
 
 /** Bridge to the native AuthCapture plugin (mobile/android AuthCapturePlugin.java). */

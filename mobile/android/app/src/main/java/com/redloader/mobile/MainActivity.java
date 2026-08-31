@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
     registerPlugin(AuthCapturePlugin.class);
     registerPlugin(MediaSaverPlugin.class);
     registerPlugin(PictureInPicturePlugin.class);
+    registerPlugin(SecureTokenStorePlugin.class);
     super.onCreate(savedInstanceState);
   }
 
