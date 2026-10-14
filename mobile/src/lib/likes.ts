@@ -1,11 +1,14 @@
 import { api } from './api'
+import { storage } from './storage'
 import { readCache, writeCache } from './cache'
 
 /**
  * Shared set of liked gif ids so the heart reflects likes from this session AND
- * the past (feeds don't return per-gif like state). Seeded from cache instantly,
- * reconciled with the server once per app run. A change event lets every open
- * player/grid update together, and `rgd:like-changed` carries {gifId, liked}.
+ * the past (feeds don't return per-gif like state). Seeded from cache
+ * instantly, then from the offline index's `liked` memberships (complete and
+ * free once the library is indexed), then reconciled with the first pages of
+ * the server's liked feed. A change event lets every open player/grid update
+ * together, and `rgd:like-changed` carries {gifId, liked}.
  */
 export const LIKE_EVENT = 'rgd:like-changed'
 export interface LikeChange {
@@ -13,19 +16,34 @@ export interface LikeChange {
   liked: boolean
 }
 
+// Pages of /feeds/liked to walk on top of the index (80 per page). The old
+// 25-page walk fired 25 back-to-back requests through the shared rate limiter
+// every time the player opened — a prime way to earn a 429.
+const SERVER_PAGES = 6
+
 const liked = new Set<string>()
 let loadPromise: Promise<void> | null = null
 
 export function loadLikedIds(): Promise<void> {
   if (!loadPromise) {
     ;(readCache<string[]>('likedIds') ?? []).forEach((id) => liked.add(id))
-    loadPromise = api
-      .getLikedIds()
-      .then((ids) => {
-        ids.forEach((id) => liked.add(id))
-        writeCache('likedIds', [...liked])
-      })
-      .catch(() => undefined)
+    loadPromise = (async () => {
+      try {
+        ;(await storage.likedIds()).forEach((id) => liked.add(id))
+      } catch {
+        /* index unavailable */
+      }
+      try {
+        for (let page = 1; page <= SERVER_PAGES; page++) {
+          const res = await api.getLikes(page)
+          for (const c of res.contents) liked.add(c.id)
+          if (!res.contents.length || !res.pages || page >= res.pages) break
+        }
+      } catch {
+        /* not signed in / transient — keep what we have */
+      }
+      writeCache('likedIds', [...liked])
+    })()
   }
   return loadPromise
 }
@@ -43,6 +61,10 @@ export async function setLike(gifId: string, next: boolean): Promise<void> {
     if (next) await api.likeGif(gifId)
     else await api.unlikeGif(gifId)
     writeCache('likedIds', [...liked])
+    // Keep the offline index's liked membership in step so Library › Likes and
+    // the heart agree without a reindex.
+    if (next) void storage.addGifMembership(gifId, 'liked', 'liked').catch(() => undefined)
+    else void storage.removeGifMembership(gifId, 'liked', 'liked').catch(() => undefined)
   } catch (e) {
     if (next) liked.delete(gifId)
     else liked.add(gifId)
