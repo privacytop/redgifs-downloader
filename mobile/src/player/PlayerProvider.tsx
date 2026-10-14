@@ -1,8 +1,8 @@
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import type { Content } from '@redloader/core'
 import Player from './Player'
 import CollectionSheet from './CollectionSheet'
-import { useDownloads } from '../context/downloads'
+import { useDownloadActions } from '../context/downloads'
 import { useToast } from '../context/toast'
 import { useSettings } from '../context/settings'
 import { useAuth } from '../context/auth'
@@ -27,24 +27,28 @@ const Ctx = createContext<PlayerCtx | null>(null)
 export function PlayerProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [source, setSource] = useState<PlaySource | null>(null)
   const [collectFor, setCollectFor] = useState<Content | null>(null)
-  const { enqueue } = useDownloads()
+  const { enqueue } = useDownloadActions()
   const { downloadQuality } = useSettings()
   const { authenticated } = useAuth()
   const notify = useToast()
 
   const open = useCallback((src: PlaySource) => setSource(src), [])
   const close = useCallback(() => setSource(null), [])
+  // Reads the latest overlay state through functional updates, so its identity
+  // (and therefore the context value) never changes.
   const dismissTop = useCallback((): boolean => {
-    if (collectFor) {
-      setCollectFor(null)
-      return true
-    }
-    if (source) {
-      setSource(null)
-      return true
-    }
-    return false
-  }, [collectFor, source])
+    let handled = false
+    setCollectFor((cur) => {
+      if (cur) handled = true
+      return null
+    })
+    if (handled) return true
+    setSource((cur) => {
+      if (cur) handled = true
+      return null
+    })
+    return handled
+  }, [])
 
   const save = useCallback(
     (c: Content) => {
@@ -65,8 +69,12 @@ export function PlayerProvider({ children }: { children: ReactNode }): React.JSX
     [authenticated, notify]
   )
 
+  // Stable value: every Feed subscribes via usePlayer(), so a fresh object per
+  // render would re-render every grid on each player/sheet state change.
+  const value = useMemo<PlayerCtx>(() => ({ open, close, dismissTop }), [open, close, dismissTop])
+
   return (
-    <Ctx.Provider value={{ open, close, dismissTop }}>
+    <Ctx.Provider value={value}>
       {children}
       {source && <Player source={source} onClose={close} onSave={save} onCollect={collect} />}
       {collectFor && (

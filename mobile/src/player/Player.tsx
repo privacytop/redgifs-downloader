@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { pickUrl, type Content } from '@redloader/core'
+import { memo, useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { pickUrl, type Content, type Quality } from '@redloader/core'
+import { useNavigate } from '../nav'
 import type { PlaySource } from './PlayerProvider'
 import { formatViews, formatDuration } from '../lib/format'
 import { useToast } from '../context/toast'
@@ -44,11 +44,20 @@ const SPEED_KEY = 'player:speed'
 const CONTROL_HIDE_MS = 3000
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const
 
+type VideoRefs = MutableRefObject<Map<string, HTMLVideoElement>>
+
+// Collection membership per gif for the session, so swiping back to a clip
+// doesn't flash "Collect" before the sqlite answer arrives.
+const collectedCache = new Map<string, boolean>()
+
 /**
  * Full-screen swipe/wheel player: drag or scroll-wheel up/down to move between
  * clips, single-tap does what Settings says (pause or mute), double-tap likes.
- * Like state is persisted across clips via the shared likes cache, and the rail
- * carries like / mute / follow / save / add-to-collection.
+ *
+ * Render-cost design: playback progress lives in <PlayerScrub> (it subscribes
+ * to the current <video> directly), and the drag offset is written straight to
+ * the deck element's transform — so neither re-renders the Player or the
+ * resident video slides. Slides are memoised with stable callbacks.
  */
 export default function Player({ source, onClose, onSave, onCollect }: PlayerProps): React.JSX.Element {
   const notify = useToast()
@@ -61,12 +70,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     Math.min(Math.max(source.index, 0), Math.max(source.items.length - 1, 0))
   )
   const [residentVideoIds, setResidentVideoIds] = useState<string[]>(() =>
-    updateVideoPool(
-      source.items.map((item) => item.id),
-      source.index,
-      [],
-      videoPoolSize
-    )
+    updateVideoPool(source.items.map((item) => item.id), source.index, [], videoPoolSize)
   )
   const [playing, setPlaying] = useState(true)
   const [muted, setMuted] = useState<boolean>(() => {
@@ -79,9 +83,6 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   const [liked, setLiked] = useState(false)
   const [following, setFollowing] = useState(false)
   const [collected, setCollected] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [mediaDuration, setMediaDuration] = useState(source.items[source.index]?.duration ?? 0)
-  const [drag, setDrag] = useState(0)
   const [heartBurst, setHeartBurst] = useState(false)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [speedOpen, setSpeedOpen] = useState(false)
@@ -92,30 +93,60 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   })
 
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
+  const refCallbacks = useRef<Map<string, (el: HTMLVideoElement | null) => void>>(new Map())
+  const deckRef = useRef<HTMLDivElement>(null)
   const itemsRef = useRef(items)
   itemsRef.current = items
   const indexRef = useRef(index)
   indexRef.current = index
+  const speedRef = useRef(speed)
+  speedRef.current = speed
+  const mutedRef = useRef(muted)
+  mutedRef.current = muted
   const loadingRef = useRef(false)
   const wantPlayingRef = useRef(true)
   const startY = useRef<number | null>(null)
+  const dragRef = useRef(0)
   const wheelAccRef = useRef(0)
   const stepLockRef = useRef(false)
   const lastTapRef = useRef(0)
+  const tapTimerRef = useRef<number | null>(null)
   const controlsTimerRef = useRef<number | null>(null)
+  const heartTimerRef = useRef<number | null>(null)
+  const stepTimerRef = useRef<number | null>(null)
 
   const current = items[index]
+  const currentId = current?.id ?? ''
+
+  // One stable ref callback per clip id, so memoised slides never re-render
+  // just because the parent did.
+  const registerRef = useCallback((id: string) => {
+    let cb = refCallbacks.current.get(id)
+    if (!cb) {
+      cb = (el: HTMLVideoElement | null): void => {
+        if (el) videoRefs.current.set(id, el)
+        else videoRefs.current.delete(id)
+      }
+      refCallbacks.current.set(id, cb)
+    }
+    return cb
+  }, [])
 
   useEffect(() => {
     setResidentVideoIds((resident) =>
-      updateVideoPool(
-        items.map((item) => item.id),
-        index,
-        resident,
-        videoPoolSize
-      )
+      updateVideoPool(items.map((item) => item.id), index, resident, videoPoolSize)
     )
   }, [index, items, videoPoolSize])
+
+  // Every timer is owned by a ref and cleared on unmount.
+  useEffect(
+    () => () => {
+      for (const t of [tapTimerRef, controlsTimerRef, heartTimerRef, stepTimerRef]) {
+        if (t.current !== null) window.clearTimeout(t.current)
+      }
+    },
+    []
+  )
 
   const currentVideo = useCallback(
     (): HTMLVideoElement | undefined => videoRefs.current.get(itemsRef.current[indexRef.current]?.id ?? ''),
@@ -164,7 +195,8 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       setIndex(next)
       if (delta > 0) void maybeLoadMore(next)
       stepLockRef.current = true
-      window.setTimeout(() => {
+      if (stepTimerRef.current !== null) window.clearTimeout(stepTimerRef.current)
+      stepTimerRef.current = window.setTimeout(() => {
         stepLockRef.current = false
         wheelAccRef.current = 0
       }, STEP_LOCK_MS)
@@ -172,37 +204,40 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     [maybeLoadMore]
   )
 
-  // Per-clip reset + start playback; like reflects the shared cache.
+  // Per-clip reset + start playback; like/follow/collect reflect shared caches.
   useEffect(() => {
-    setMediaDuration(current?.duration ?? 0)
+    if (tapTimerRef.current !== null) {
+      window.clearTimeout(tapTimerRef.current)
+      tapTimerRef.current = null
+      lastTapRef.current = 0
+    }
     setLiked(current ? isLiked(current.id) : false)
     if (current) setFollowing(isFollowing(current.username))
-    // Collection membership lives in sqlite; reflect it (async) per clip.
-    setCollected(false)
     if (current) {
       const id = current.id
-      void storage.gifCollectionIds(id).then((ids) => {
-        if (itemsRef.current[indexRef.current]?.id === id) setCollected(ids.length > 0)
-      })
+      const known = collectedCache.get(id)
+      setCollected(known ?? false)
+      if (known === undefined) {
+        void storage
+          .gifCollectionIds(id)
+          .then((ids) => {
+            collectedCache.set(id, ids.length > 0)
+            if (itemsRef.current[indexRef.current]?.id === id) setCollected(ids.length > 0)
+          })
+          .catch(() => undefined)
+      }
     }
     for (const [id, v] of videoRefs.current) {
       if (id !== current?.id) v.pause()
     }
     const v = currentVideo()
-    if (v) {
-      const duration = Number.isFinite(v.duration) ? v.duration : current?.duration ?? 0
-      setMediaDuration(duration)
-      setProgress(duration > 0 ? v.currentTime / duration : 0)
-      if (wantPlayingRef.current) {
-        v.muted = muted
-        v.playbackRate = speed
-        v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
-      }
-    } else {
-      setProgress(0)
+    if (v && wantPlayingRef.current) {
+      v.muted = mutedRef.current
+      v.playbackRate = speedRef.current
+      v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id])
+  }, [currentId])
 
   useEffect(() => {
     for (const video of videoRefs.current.values()) video.playbackRate = speed
@@ -215,13 +250,12 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current)
       setControlsVisible(true)
     }
-  }, [playing, current?.id, showControls])
+  }, [playing, currentId, showControls])
 
+  // PiP: register the mode listener ONCE; only the aspect hint follows the clip.
   useEffect(() => {
     let disposed = false
     let remove: (() => Promise<void>) | undefined
-    const dims = { width: current?.width || 9, height: current?.height || 16 }
-    void PictureInPicture.setActive({ active: true, ...dims }).catch(() => undefined)
     void PictureInPicture.addListener('pipModeChanged', ({ active }) => setPipMode(active)).then((handle) => {
       if (disposed) void handle.remove()
       else remove = handle.remove
@@ -230,12 +264,15 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       disposed = true
       if (remove) void remove()
       void PictureInPicture.setActive({ active: false }).catch(() => undefined)
-      if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current)
     }
-  }, [current?.height, current?.width])
+  }, [])
+  useEffect(() => {
+    const dims = { width: current?.width || 9, height: current?.height || 16 }
+    void PictureInPicture.setActive({ active: true, ...dims }).catch(() => undefined)
+  }, [current?.width, current?.height])
 
   // Load the shared caches once, then reflect them; listen for changes so a
-  // like/follow made anywhere (or on revisiting a clip) shows here.
+  // like/follow/collect made anywhere (or on revisiting a clip) shows here.
   useEffect(() => {
     void loadLikedIds().then(() => {
       const c = itemsRef.current[indexRef.current]
@@ -257,6 +294,7 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     }
     const onCollect = (e: Event): void => {
       const d = (e as CustomEvent<CollectChange>).detail
+      collectedCache.set(d.gifId, d.collected)
       const c = itemsRef.current[indexRef.current]
       if (c && c.id === d.gifId) setCollected(d.collected)
     }
@@ -293,22 +331,12 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     showControls()
   }, [currentVideo, showControls])
 
-  const seekTo = useCallback(
-    (fraction: number): void => {
-      const v = currentVideo()
-      if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
-      const next = Math.min(1, Math.max(0, fraction))
-      v.currentTime = next * v.duration
-      setProgress(next)
-    },
-    [currentVideo]
-  )
-
   const toggleLike = useCallback(async (): Promise<void> => {
-    if (!current) return
-    const next = !liked
+    const c = itemsRef.current[indexRef.current]
+    if (!c) return
+    const next = !isLiked(c.id)
     try {
-      await setLike(current.id, next)
+      await setLike(c.id, next)
     } catch (e) {
       notify(
         (authenticated ? 'Like failed: ' : 'Sign in to like — ') +
@@ -316,24 +344,26 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         'error'
       )
     }
-  }, [current, liked, notify, authenticated])
+  }, [notify, authenticated])
+
+  const burstHeart = useCallback((): void => {
+    setHeartBurst(true)
+    if (heartTimerRef.current !== null) window.clearTimeout(heartTimerRef.current)
+    heartTimerRef.current = window.setTimeout(() => setHeartBurst(false), 600)
+  }, [])
 
   const likeFromDoubleTap = useCallback((): void => {
-    if (!current || liked) {
-      setHeartBurst(true)
-      window.setTimeout(() => setHeartBurst(false), 600)
-      return
-    }
-    setHeartBurst(true)
-    window.setTimeout(() => setHeartBurst(false), 600)
-    void toggleLike()
-  }, [current, liked, toggleLike])
+    burstHeart()
+    const c = itemsRef.current[indexRef.current]
+    if (c && !isLiked(c.id)) void toggleLike()
+  }, [burstHeart, toggleLike])
 
   const toggleFollow = useCallback(async (): Promise<void> => {
-    if (!current) return
-    const next = !following
+    const c = itemsRef.current[indexRef.current]
+    if (!c) return
+    const next = !isFollowing(c.username)
     try {
-      await setFollow(current.username, next)
+      await setFollow(c.username, next)
     } catch (e) {
       notify(
         (authenticated ? 'Follow failed: ' : 'Sign in to follow — ') +
@@ -341,26 +371,31 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         'error'
       )
     }
-  }, [current, following, notify, authenticated])
+  }, [notify, authenticated])
 
+  const tapBehaviorRef = useRef(tapBehavior)
+  tapBehaviorRef.current = tapBehavior
   const onVideoTap = useCallback((): void => {
     showControls()
     const now = Date.now()
     if (now - lastTapRef.current < DOUBLE_TAP_MS) {
       lastTapRef.current = 0
+      if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current)
+      tapTimerRef.current = null
       likeFromDoubleTap()
-    } else {
-      lastTapRef.current = now
-      window.setTimeout(() => {
-        // If no second tap arrived, this was a single tap.
-        if (lastTapRef.current !== 0 && Date.now() - lastTapRef.current >= DOUBLE_TAP_MS - 20) {
-          lastTapRef.current = 0
-          if (tapBehavior === 'mute') setMuted((m) => !m)
-          else togglePlay()
-        }
-      }, DOUBLE_TAP_MS)
+      return
     }
-  }, [likeFromDoubleTap, showControls, tapBehavior, togglePlay])
+    lastTapRef.current = now
+    if (tapTimerRef.current !== null) window.clearTimeout(tapTimerRef.current)
+    tapTimerRef.current = window.setTimeout(() => {
+      // No second tap arrived: this was a single tap (the timer is cleared on
+      // clip change, so it can never act on the next clip).
+      tapTimerRef.current = null
+      lastTapRef.current = 0
+      if (tapBehaviorRef.current === 'mute') setMuted((m) => !m)
+      else togglePlay()
+    }, DOUBLE_TAP_MS)
+  }, [likeFromDoubleTap, showControls, togglePlay])
 
   const enterPip = async (): Promise<void> => {
     if (!current) return
@@ -385,21 +420,35 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   }
 
   // --- gestures -------------------------------------------------------------
+  // The drag offset is applied to the deck wrapper directly (no state, no
+  // re-render per touchmove). Slides animate their own offset with the same
+  // duration/easing, so on release the two transitions add up to one smooth
+  // motion from the finger position to the next clip.
+  const setDeck = (px: number, animate: boolean): void => {
+    const el = deckRef.current
+    if (!el) return
+    el.style.transition = animate ? 'transform var(--t-med) var(--ease)' : 'none'
+    el.style.transform = px ? `translateY(${px}px)` : ''
+  }
   const onTouchStart = (e: React.TouchEvent): void => {
     showControls()
     startY.current = e.touches[0].clientY
+    dragRef.current = 0
   }
   const onTouchMove = (e: React.TouchEvent): void => {
     if (startY.current === null) return
-    setDrag(e.touches[0].clientY - startY.current)
+    dragRef.current = e.touches[0].clientY - startY.current
+    setDeck(dragRef.current, false)
   }
   const onTouchEnd = (): void => {
     if (startY.current === null) return
     const h = window.innerHeight
+    const drag = dragRef.current
+    startY.current = null
+    dragRef.current = 0
+    setDeck(0, true)
     if (drag < -h * SWIPE_COMMIT) step(1)
     else if (drag > h * SWIPE_COMMIT) step(-1)
-    startY.current = null
-    setDrag(0)
   }
   const onWheel = (e: React.WheelEvent): void => {
     if (stepLockRef.current) return
@@ -426,6 +475,9 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, step, togglePlay])
 
+  const onPlay = useCallback(() => setPlaying(true), [])
+  const onPause = useCallback(() => setPlaying(false), [])
+
   if (!current) {
     return (
       <div className="player" onClick={onClose}>
@@ -437,9 +489,6 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
   }
 
   const residentSet = new Set(residentVideoIds)
-  const slides = items
-    .map((content, itemIndex) => ({ content, itemIndex }))
-    .filter(({ content }) => residentSet.has(content.id))
 
   return (
     <div
@@ -449,59 +498,23 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
       onTouchEnd={onTouchEnd}
       onWheel={onWheel}
     >
-      <div className="player-deck">
-        {slides.map(({ content: c, itemIndex: i }) => {
-          const isCurrent = i === index
-          const offset = (i - index) * 100
-          return (
-            <div
+      <div className="player-deck" ref={deckRef}>
+        {items.map((c, i) =>
+          residentSet.has(c.id) ? (
+            <Slide
               key={c.id}
-              className="player-slide"
-              style={{
-                transform: `translateY(calc(${offset}% + ${drag}px))`,
-                transition: startY.current !== null ? 'none' : undefined
-              }}
-            >
-              <CachedVideo
-                ref={(el) => {
-                  if (el) videoRefs.current.set(c.id, el)
-                  else videoRefs.current.delete(c.id)
-                }}
-                className="player-video"
-                src={pickUrl(c, effectiveStreamQuality)}
-                posterKey={`media:${c.id}`}
-                posterUrl={c.urls.thumbnail || c.urls.poster}
-                loop
-                playsInline
-                muted={!isCurrent || muted}
-                preload="auto"
-                autoPlay={isCurrent}
-                onClick={isCurrent ? onVideoTap : undefined}
-                onTimeUpdate={
-                  isCurrent
-                    ? (e) => {
-                        const v = e.currentTarget
-                        if (v.duration) {
-                          setMediaDuration(v.duration)
-                          setProgress(v.currentTime / v.duration)
-                        }
-                      }
-                    : undefined
-                }
-                onLoadedMetadata={
-                  isCurrent
-                    ? (e) => {
-                        e.currentTarget.playbackRate = speed
-                        if (e.currentTarget.duration) setMediaDuration(e.currentTarget.duration)
-                      }
-                    : undefined
-                }
-                onPlay={isCurrent ? () => setPlaying(true) : undefined}
-                onPause={isCurrent ? () => setPlaying(false) : undefined}
-              />
-            </div>
-          )
-        })}
+              content={c}
+              offset={(i - index) * 100}
+              isCurrent={i === index}
+              muted={muted}
+              quality={effectiveStreamQuality}
+              registerRef={registerRef}
+              onTap={onVideoTap}
+              onPlay={onPlay}
+              onPause={onPause}
+            />
+          ) : null
+        )}
       </div>
 
       <div className="player-scrim player-chrome" />
@@ -609,11 +622,118 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
         )}
       </div>
 
-      <div className="player-timebar player-chrome">
-        <span>{formatDuration(progress * mediaDuration)}</span>
-        <span>−{formatDuration(Math.max(0, mediaDuration * (1 - progress)))}</span>
-      </div>
+      <PlayerScrub
+        videoRefs={videoRefs}
+        currentId={currentId}
+        fallbackDuration={current.duration ?? 0}
+        speedRef={speedRef}
+        onInteract={showControls}
+      />
+    </div>
+  )
+}
 
+interface SlideProps {
+  content: Content
+  offset: number
+  isCurrent: boolean
+  muted: boolean
+  quality: Quality
+  registerRef: (id: string) => (el: HTMLVideoElement | null) => void
+  onTap: () => void
+  onPlay: () => void
+  onPause: () => void
+}
+
+/** One resident clip. Memoised: only its own props (offset, current, mute) re-render it. */
+const Slide = memo(function Slide({
+  content: c,
+  offset,
+  isCurrent,
+  muted,
+  quality,
+  registerRef,
+  onTap,
+  onPlay,
+  onPause
+}: SlideProps): React.JSX.Element {
+  return (
+    <div className="player-slide" style={{ transform: `translateY(${offset}%)` }}>
+      <CachedVideo
+        ref={registerRef(c.id)}
+        className="player-video"
+        src={pickUrl(c, quality)}
+        posterKey={`media:${c.id}`}
+        posterUrl={c.urls.thumbnail || c.urls.poster}
+        loop
+        playsInline
+        muted={!isCurrent || muted}
+        preload="auto"
+        autoPlay={isCurrent}
+        onClick={isCurrent ? onTap : undefined}
+        onPlay={isCurrent ? onPlay : undefined}
+        onPause={isCurrent ? onPause : undefined}
+      />
+    </div>
+  )
+})
+
+interface ScrubProps {
+  videoRefs: VideoRefs
+  currentId: string
+  fallbackDuration: number
+  speedRef: MutableRefObject<number>
+  onInteract: () => void
+}
+
+/**
+ * Time readout + seek bar. Subscribes to the current <video>'s timeupdate /
+ * metadata events itself, so the ~4 updates a second re-render only this
+ * small component — never the deck of videos above it.
+ */
+function PlayerScrub({ videoRefs, currentId, fallbackDuration, speedRef, onInteract }: ScrubProps): React.JSX.Element {
+  const [progress, setProgress] = useState(0)
+  const [duration, setDuration] = useState(fallbackDuration)
+
+  useEffect(() => {
+    setProgress(0)
+    setDuration(fallbackDuration)
+    const v = videoRefs.current.get(currentId)
+    if (!v) return
+    const sync = (): void => {
+      const d = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : fallbackDuration
+      setDuration(d)
+      setProgress(d > 0 ? Math.min(1, v.currentTime / d) : 0)
+    }
+    const meta = (): void => {
+      v.playbackRate = speedRef.current
+      sync()
+    }
+    sync()
+    v.addEventListener('timeupdate', sync)
+    v.addEventListener('loadedmetadata', meta)
+    v.addEventListener('durationchange', sync)
+    return () => {
+      v.removeEventListener('timeupdate', sync)
+      v.removeEventListener('loadedmetadata', meta)
+      v.removeEventListener('durationchange', sync)
+    }
+  }, [currentId, fallbackDuration, videoRefs, speedRef])
+
+  const seekTo = (fraction: number): void => {
+    const v = videoRefs.current.get(currentId)
+    if (!v || !Number.isFinite(v.duration) || v.duration <= 0) return
+    const next = Math.min(1, Math.max(0, fraction))
+    v.currentTime = next * v.duration
+    setProgress(next)
+  }
+
+  return (
+    <>
+      <div className="player-timebar player-chrome">
+        <span>{formatDuration(progress * duration)}</span>
+        <span>−{formatDuration(Math.max(0, duration * (1 - progress)))}</span>
+      </div>
       <div
         className="player-scrub player-chrome"
         onTouchStart={(e) => e.stopPropagation()}
@@ -629,10 +749,10 @@ export default function Player({ source, onClose, onSave, onCollect }: PlayerPro
           aria-label="Playback position"
           style={{ '--progress': `${Math.round(progress * 100)}%` } as React.CSSProperties}
           onChange={(e) => seekTo(Number(e.currentTarget.value) / 1000)}
-          onPointerDown={showControls}
+          onPointerDown={onInteract}
         />
       </div>
-    </div>
+    </>
   )
 }
 
