@@ -109,6 +109,8 @@ public class AuthCapturePlugin extends Plugin {
     final TokenSink sink,
     final String excludedToken
   ) {
+    // One polling chain per operation: every (re)schedule replaces the pending run.
+    operation.scan = () -> scanLocalStorage(operation, sink, excludedToken);
     return new WebViewClient() {
       @Override
       public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
@@ -129,7 +131,7 @@ public class AuthCapturePlugin extends Plugin {
       @Override
       public void onPageFinished(WebView view, String url) {
         if (!operation.settled.get()) {
-          main.postDelayed(() -> scanLocalStorage(operation, sink, excludedToken), 1200);
+          scheduleScan(operation, 1200);
         }
       }
     };
@@ -188,6 +190,7 @@ public class AuthCapturePlugin extends Plugin {
 
   private void cleanup(ActiveOperation operation) {
     if (operation.timeout != null) main.removeCallbacks(operation.timeout);
+    if (operation.scan != null) main.removeCallbacks(operation.scan);
     if (operation.web != null) {
       operation.web.stopLoading();
       operation.web.setWebViewClient(null);
@@ -198,6 +201,12 @@ public class AuthCapturePlugin extends Plugin {
     }
     if (operation.web != null) operation.web.destroy();
     if (active == operation) active = null;
+  }
+
+  private void scheduleScan(ActiveOperation operation, long delayMs) {
+    if (operation.scan == null) return;
+    main.removeCallbacks(operation.scan);
+    if (!operation.settled.get()) main.postDelayed(operation.scan, delayMs);
   }
 
   private void scanLocalStorage(
@@ -217,7 +226,7 @@ public class AuthCapturePlugin extends Plugin {
       if (!token.isEmpty() && isUserToken(token) && !token.equals(excludedToken)) {
         sink.onToken(token, "localStorage");
       } else if (!operation.settled.get()) {
-        main.postDelayed(() -> scanLocalStorage(operation, sink, excludedToken), 1500);
+        scheduleScan(operation, 1500);
       }
     });
   }
@@ -249,6 +258,7 @@ public class AuthCapturePlugin extends Plugin {
     WebView web;
     Dialog dialog;
     Runnable timeout;
+    Runnable scan;
 
     ActiveOperation(PluginCall call) {
       this.call = call;
