@@ -1,9 +1,9 @@
-import { HashRouter, Route, Routes } from 'react-router-dom'
 import { ToastProvider } from './context/toast'
 import { AuthProvider } from './context/auth'
 import { SettingsProvider } from './context/settings'
 import { DownloadsProvider } from './context/downloads'
 import { PlayerProvider } from './player/PlayerProvider'
+import { NavProvider, NavScreens, type RouteDef } from './nav'
 import TabBar from './components/TabBar'
 import Settings from './screens/Settings'
 import Home from './screens/Home'
@@ -18,39 +18,42 @@ import Downloads from './screens/Downloads'
 import You from './screens/You'
 import BackButtonHandler from './components/BackButtonHandler'
 
+const ROUTES: RouteDef[] = [
+  { pattern: '/', component: Home },
+  { pattern: '/discover', component: Discover },
+  { pattern: '/search/:query', component: Search },
+  { pattern: '/creator/:username', component: Creator },
+  { pattern: '/niche/:id', component: NicheDetail },
+  { pattern: '/tag/:tag', component: TagDetail },
+  { pattern: '/library', component: Library },
+  { pattern: '/collection/:id', component: CollectionDetail },
+  { pattern: '/downloads', component: Downloads },
+  { pattern: '/you', component: You },
+  { pattern: '/settings', component: Settings }
+]
+
+/**
+ * App shell. NavProvider owns five independent, keep-alive tab stacks that
+ * NavScreens renders; PlayerProvider sits inside it because the player
+ * navigates (creator / tag taps).
+ */
 export default function App(): React.JSX.Element {
-  // HashRouter wraps PlayerProvider because the player (mounted by the
-  // provider) uses useNavigate — it must be inside the Router.
   return (
     <ToastProvider>
       <SettingsProvider>
-      <AuthProvider>
-        <DownloadsProvider>
-          <HashRouter>
-            <PlayerProvider>
-              <BackButtonHandler />
-              <div className="app">
-                <div className="app-body">
-                  <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/discover" element={<Discover />} />
-                    <Route path="/search/:query" element={<Search />} />
-                    <Route path="/creator/:username" element={<Creator />} />
-                    <Route path="/niche/:id" element={<NicheDetail />} />
-                    <Route path="/tag/:tag" element={<TagDetail />} />
-                    <Route path="/library" element={<Library />} />
-                    <Route path="/collection/:id" element={<CollectionDetail />} />
-                    <Route path="/downloads" element={<Downloads />} />
-                    <Route path="/you" element={<You />} />
-                    <Route path="/settings" element={<Settings />} />
-                  </Routes>
+        <AuthProvider>
+          <DownloadsProvider>
+            <NavProvider routes={ROUTES}>
+              <PlayerProvider>
+                <BackButtonHandler />
+                <div className="app">
+                  <NavScreens />
+                  <TabBar />
                 </div>
-                <TabBar />
-              </div>
-            </PlayerProvider>
-          </HashRouter>
-        </DownloadsProvider>
-      </AuthProvider>
+              </PlayerProvider>
+            </NavProvider>
+          </DownloadsProvider>
+        </AuthProvider>
       </SettingsProvider>
     </ToastProvider>
   )

@@ -1,15 +1,14 @@
 import { useEffect, useRef } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNav } from '../nav'
 import { usePlayer } from '../player/PlayerProvider'
 import { useToast } from '../context/toast'
 
 const EXIT_WINDOW_MS = 2000
 
-/** Android system-back policy: overlays, browser history, then double-back exit. */
+/** Android system-back policy: overlays, then the active tab stack, then double-back exit. */
 export default function BackButtonHandler(): null {
-  const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { back } = useNav()
   const player = usePlayer()
   const notify = useToast()
   const lastExitPress = useRef(0)
@@ -18,15 +17,12 @@ export default function BackButtonHandler(): null {
     let disposed = false
     let remove: (() => Promise<void>) | undefined
 
-    void CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+    void CapacitorApp.addListener('backButton', () => {
       if (player.dismissTop()) return
-
-      if (canGoBack) {
+      if (back()) {
         lastExitPress.current = 0
-        navigate(-1)
         return
       }
-
       const now = Date.now()
       if (now - lastExitPress.current <= EXIT_WINDOW_MS) {
         void CapacitorApp.exitApp()
@@ -43,7 +39,7 @@ export default function BackButtonHandler(): null {
       disposed = true
       if (remove) void remove()
     }
-  }, [navigate, notify, pathname, player])
+  }, [back, notify, player])
 
   return null
 }

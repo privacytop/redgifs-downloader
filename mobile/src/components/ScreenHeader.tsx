@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../nav'
 import IconButton from './IconButton'
 import { IconChevronLeft } from './icons'
 

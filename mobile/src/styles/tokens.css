@@ -51,10 +51,22 @@ button { font-family: inherit; color: inherit; }
 /* --- App shell -------------------------------------------------------------- */
 .app { height: 100%; display: flex; flex-direction: column; }
 .app-body {
+  position: relative;
   flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+/* One scroll container per mounted screen (keep-alive tab stacks). Hidden
+   screens are display:none via the `hidden` attribute; the nav layer restores
+   each one's scrollTop when it comes back. */
+.screen {
+  position: absolute;
+  inset: 0;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom));
+  background: var(--bg);
 }
 
 /* --- Bottom tab bar --------------------------------------------------------- */
@@ -324,7 +336,6 @@ button { font-family: inherit; color: inherit; }
   background: rgba(12, 11, 14, 0.6);
   border-radius: 5px;
   padding: 2px 6px;
-  backdrop-filter: blur(4px);
 }
 
 /* --- Creator row card ------------------------------------------------------- */
@@ -455,7 +466,15 @@ button { font-family: inherit; color: inherit; }
 .sortmenu-opt.on { color: var(--ember2); }
 .sortmenu-opt svg { width: 14px; height: 14px; color: var(--ember); flex: none; }
 
-.feed-toolbar { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.feed-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 12px; }
+.feed-toolbar.with-left { justify-content: space-between; }
+.feed-note {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ember2);
+  margin: -4px 0 10px;
+}
 /* A header row that carries a control (seg / section label) on the left and the
    sort menu on the right. */
 .feed-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -473,6 +492,12 @@ button { font-family: inherit; color: inherit; }
   cursor: pointer;
 }
 .chip.on { color: #170a08; background: var(--ember); border-color: var(--ember); }
+.chip-count { display: inline-flex; align-items: center; gap: 6px; }
+.chip-n { font-size: 9.5px; color: var(--dim); }
+.chip.on .chip-n { color: rgba(23, 10, 8, 0.7); }
+.chip-more { color: var(--ember2); border-style: dashed; }
+.chip-clear { display: inline-flex; align-items: center; gap: 4px; color: var(--cream); }
+.chip-clear svg { width: 12px; height: 12px; }
 
 /* --- States ----------------------------------------------------------------- */
 .empty {
@@ -520,14 +545,15 @@ button { font-family: inherit; color: inherit; }
 .player-chrome { transition: opacity 180ms ease; }
 .player.controls-hidden .player-chrome { opacity: 0; pointer-events: none; }
 .player.pip .player-chrome, .player.pip .player-paused, .player.pip .player-heart-burst { display: none; }
-.player-deck { position: absolute; inset: 0; }
+/* The deck carries the live drag offset (one GPU layer); slides only animate
+   their resting offset — no per-slide layer, no re-render while dragging. */
+.player-deck { position: absolute; inset: 0; will-change: transform; }
 .player-slide {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
   transition: transform var(--t-med) var(--ease);
-  will-change: transform;
 }
 @media (prefers-reduced-motion: reduce) { .player-slide { transition: none; } }
 .player-video {
@@ -563,7 +589,6 @@ button { font-family: inherit; color: inherit; }
   background: rgba(12, 11, 14, 0.5);
   border-radius: 999px;
   padding: 6px 12px;
-  backdrop-filter: blur(6px);
 }
 .player-close, .player-rail-btn, .player-tool {
   width: 44px;
@@ -574,7 +599,6 @@ button { font-family: inherit; color: inherit; }
   border-radius: 50%;
   background: rgba(12, 11, 14, 0.5);
   color: var(--cream);
-  backdrop-filter: blur(6px);
   cursor: pointer;
 }
 .player-close svg { width: 22px; height: 22px; }
@@ -594,7 +618,6 @@ button { font-family: inherit; color: inherit; }
   background: rgba(18,16,22,0.96);
   border: 1px solid var(--line2);
   border-radius: 11px;
-  backdrop-filter: blur(8px);
 }
 .player-speed-menu button {
   border: 0;
@@ -639,7 +662,6 @@ button { font-family: inherit; color: inherit; }
   border: 1.5px solid rgba(245, 239, 230, 0.55);
   background: rgba(12, 11, 14, 0.5);
   color: var(--cream);
-  backdrop-filter: blur(6px);
   cursor: pointer;
 }
 .player-follow svg { width: 24px; height: 24px; }
@@ -684,7 +706,6 @@ button { font-family: inherit; color: inherit; }
   border-radius: 999px;
   padding: 3px 9px;
   cursor: pointer;
-  backdrop-filter: blur(6px);
 }
 .player-tag:active { border-color: var(--ember); color: var(--ember2); }
 .player-paused {
@@ -819,6 +840,24 @@ button { font-family: inherit; color: inherit; }
 }
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
 .sheet-grip { width: 40px; height: 4px; border-radius: 999px; background: var(--line2); margin: 4px auto 12px; }
+.sheet-tall { max-height: 88vh; }
+.sheet-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.sheet-title { flex: 1; font-family: var(--serif); font-size: 20px; font-weight: 560; color: var(--cream); }
+.sheet .section-label { margin: 18px 0 8px; }
+.section-hint { text-transform: none; letter-spacing: 0; color: var(--dim); margin-left: 6px; }
+.seg-mini { padding: 2px; border-radius: 8px; }
+.seg-mini button { padding: 3px 9px; font-size: 10px; }
+.sheet-row.on { color: var(--cream); }
+.sheet-row.busy { opacity: 0.6; }
+
+/* --- Library toolbar + active filters --------------------------------------- */
+.lib-bar { display: flex; align-items: center; gap: 8px; margin: 12px 0 12px; }
+.lib-readout { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-filter.on { border-color: var(--ember); color: var(--ember2); }
+.lib-filter.on .sortmenu-lead { color: var(--ember2); }
+.lib-active { margin: -2px 0 14px; align-items: center; }
+.lib-active .chip { display: inline-flex; align-items: center; gap: 5px; }
+.lib-active .chip svg { width: 11px; height: 11px; }
 .sheet-row {
   display: flex;
   align-items: center;

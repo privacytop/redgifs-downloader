@@ -4,6 +4,7 @@ import MediaCard from './MediaCard'
 
 interface MediaGridProps {
   items: Content[]
+  /** Must be referentially stable (useCallback) so memoised cards don't re-render. */
   onOpen: (content: Content, index: number) => void
   onEndReached?: () => void
   hasMore?: boolean
@@ -36,7 +37,7 @@ export default function MediaGrid({
     <>
       <div className="grid">
         {items.map((c, i) => (
-          <MediaCard key={c.id} content={c} onOpen={(x) => onOpen(x, i)} />
+          <MediaCard key={c.id} content={c} index={i} onOpen={onOpen} />
         ))}
       </div>
       {loading && <div className="loading">Loading…</div>}

@@ -1,16 +1,22 @@
-import { useNavigate } from 'react-router-dom'
+import { memo } from 'react'
 import type { Content } from '@redloader/core'
+import { useNavigate } from '../nav'
 import { formatViews } from '../lib/format'
 import { CachedImage } from './CachedMedia'
 
 interface MediaCardProps {
   content: Content
-  onOpen: (content: Content) => void
+  index: number
+  onOpen: (content: Content, index: number) => void
   badge?: string
 }
 
-/** Portrait 9:16 tile: poster + creator + views. Tap opens the player. */
-export default function MediaCard({ content, onOpen, badge }: MediaCardProps): React.JSX.Element {
+/**
+ * Portrait 9:16 tile: poster + creator + views. Tap opens the player.
+ * Memoised: a feed's loading/paging state changes must not re-render every
+ * tile, so the parent passes a stable `onOpen` and the index.
+ */
+const MediaCard = memo(function MediaCard({ content, index, onOpen, badge }: MediaCardProps): React.JSX.Element {
   const navigate = useNavigate()
   const poster = content.urls.thumbnail || content.urls.poster
 
@@ -23,6 +29,7 @@ export default function MediaCard({ content, onOpen, badge }: MediaCardProps): R
           src={poster}
           alt=""
           loading="lazy"
+          decoding="async"
         />
       )}
       <div className="card-scrim" />
@@ -30,7 +37,7 @@ export default function MediaCard({ content, onOpen, badge }: MediaCardProps): R
       <button
         className="card-open"
         aria-label={`Play @${content.username}`}
-        onClick={() => onOpen(content)}
+        onClick={() => onOpen(content, index)}
       />
       <div className="card-meta">
         <button
@@ -47,4 +54,6 @@ export default function MediaCard({ content, onOpen, badge }: MediaCardProps): R
       </div>
     </div>
   )
-}
+})
+
+export default MediaCard

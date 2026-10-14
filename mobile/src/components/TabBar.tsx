@@ -1,28 +1,31 @@
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNav, type TabId } from '../nav'
 import { IconCompass, IconDownload, IconHome, IconImage, IconUser } from './icons'
 
-const TABS = [
-  { path: '/', label: 'Home', Icon: IconHome, match: (p: string) => p === '/' },
-  { path: '/discover', label: 'Discover', Icon: IconCompass, match: (p: string) => p.startsWith('/discover') || p.startsWith('/search') || p.startsWith('/niche') || p.startsWith('/tag') || p.startsWith('/creator') },
-  { path: '/library', label: 'Library', Icon: IconImage, match: (p: string) => p.startsWith('/library') || p.startsWith('/collection') || p.startsWith('/likes') },
-  { path: '/downloads', label: 'Downloads', Icon: IconDownload, match: (p: string) => p.startsWith('/downloads') },
-  { path: '/you', label: 'You', Icon: IconUser, match: (p: string) => p.startsWith('/you') }
+const TABS: { id: TabId; label: string; Icon: typeof IconHome }[] = [
+  { id: 'home', label: 'Home', Icon: IconHome },
+  { id: 'discover', label: 'Discover', Icon: IconCompass },
+  { id: 'library', label: 'Library', Icon: IconImage },
+  { id: 'downloads', label: 'Downloads', Icon: IconDownload },
+  { id: 'you', label: 'You', Icon: IconUser }
 ]
 
-/** Bottom navigation. Detail routes keep their parent tab lit. */
+/**
+ * Bottom navigation over the per-tab stacks. Tapping another tab switches to it
+ * (its stack + scroll positions intact); re-tapping the active tab pops to its
+ * root, or scrolls the root to the top.
+ */
 export default function TabBar(): React.JSX.Element {
-  const navigate = useNavigate()
-  const { pathname } = useLocation()
+  const { snapshot, switchTab, tapActiveTab } = useNav()
 
   return (
     <nav className="tabbar">
-      {TABS.map(({ path, label, Icon, match }) => {
-        const on = match(pathname)
+      {TABS.map(({ id, label, Icon }) => {
+        const on = snapshot.active === id
         return (
           <button
-            key={path}
+            key={id}
             className={`tab ${on ? 'on' : ''}`}
-            onClick={() => navigate(path)}
+            onClick={() => (on ? tapActiveTab() : switchTab(id))}
             aria-current={on ? 'page' : undefined}
           >
             <Icon />
