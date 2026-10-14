@@ -56,6 +56,11 @@ final class DownloadTaskStore {
     return result;
   }
 
+  static synchronized void remove(Context context, String id) {
+    if (id == null || id.isEmpty()) return;
+    prefs(context).edit().remove(PREFIX + id).apply();
+  }
+
   static synchronized void prune(Context context) {
     JSONArray tasks = all(context);
     if (tasks.length() <= MAX_TASKS) return;

@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode
@@ -29,15 +30,27 @@ export interface DownloadTask {
   error?: string
 }
 
-interface DownloadsCtx {
+interface DownloadsState {
   tasks: DownloadTask[]
   activeCount: number
+}
+
+interface DownloadsActions {
   enqueue: (contents: Content[], label: string, quality: Quality) => void
   cancel: (id: string) => void
   retry: (id: string) => void
+  /** Drop a finished task (optimistic; native snapshot removed afterwards). */
+  remove: (id: string) => void
+  /** Remove every non-active task. */
+  clearFinished: () => void
 }
 
-const Ctx = createContext<DownloadsCtx | null>(null)
+type DownloadsCtx = DownloadsState & DownloadsActions
+
+// Two contexts: the actions never change identity, so a consumer that only
+// needs `enqueue` (the player) is not re-rendered by every progress tick.
+const StateCtx = createContext<DownloadsState | null>(null)
+const ActionsCtx = createContext<DownloadsActions | null>(null)
 let seq = 0
 
 function publicTask(task: NativeDownloadTask): DownloadTask {
@@ -186,16 +199,50 @@ export function DownloadsProvider({ children }: { children: ReactNode }): React.
     })
   }, [flush])
 
-  const activeCount = tasks.filter((task) => task.status === 'downloading').length
+  const remove = useCallback((id: string) => {
+    const task = tasksRef.current.get(id)
+    if (!task || task.status === 'downloading') return
+    tasksRef.current.delete(id)
+    flush()
+    void MediaSaver.removeTask({ id }).catch(() => undefined)
+  }, [flush])
+
+  const clearFinished = useCallback(() => {
+    const ids = [...tasksRef.current.values()]
+      .filter((task) => task.status !== 'downloading')
+      .map((task) => task.id)
+    if (!ids.length) return
+    for (const id of ids) tasksRef.current.delete(id)
+    flush()
+    for (const id of ids) void MediaSaver.removeTask({ id }).catch(() => undefined)
+  }, [flush])
+
+  const state = useMemo<DownloadsState>(
+    () => ({ tasks, activeCount: tasks.filter((task) => task.status === 'downloading').length }),
+    [tasks]
+  )
+  const actions = useMemo<DownloadsActions>(
+    () => ({ enqueue, cancel, retry, remove, clearFinished }),
+    [enqueue, cancel, retry, remove, clearFinished]
+  )
   return (
-    <Ctx.Provider value={{ tasks, activeCount, enqueue, cancel, retry }}>
-      {children}
-    </Ctx.Provider>
+    <ActionsCtx.Provider value={actions}>
+      <StateCtx.Provider value={state}>{children}</StateCtx.Provider>
+    </ActionsCtx.Provider>
   )
 }
 
+/** Tasks + actions (the Downloads screen). Re-renders on every task change. */
 export function useDownloads(): DownloadsCtx {
-  const ctx = useContext(Ctx)
-  if (!ctx) throw new Error('useDownloads must be used within a DownloadsProvider')
-  return ctx
+  const state = useContext(StateCtx)
+  const actions = useContext(ActionsCtx)
+  if (!state || !actions) throw new Error('useDownloads must be used within a DownloadsProvider')
+  return useMemo(() => ({ ...state, ...actions }), [state, actions])
+}
+
+/** Actions only — stable identity, no re-render on progress ticks. */
+export function useDownloadActions(): DownloadsActions {
+  const actions = useContext(ActionsCtx)
+  if (!actions) throw new Error('useDownloadActions must be used within a DownloadsProvider')
+  return actions
 }

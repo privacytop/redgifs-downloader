@@ -1,8 +1,10 @@
 package com.redloader.mobile;
 
 import android.Manifest;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 
 import androidx.core.app.ActivityCompat;
@@ -113,6 +115,58 @@ public class MediaSaverPlugin extends Plugin {
     emitTask(task);
     startService(id, DownloadService.ACTION_START);
     call.resolve();
+  }
+
+  @PluginMethod
+  public void removeTask(PluginCall call) {
+    String id = call.getString("id");
+    if (id == null || id.isEmpty()) {
+      call.reject("id is required");
+      return;
+    }
+    JSONObject task = DownloadTaskStore.get(getContext(), id);
+    if (task != null) {
+      String status = task.optString("status", "");
+      if ("queued".equals(status) || "downloading".equals(status)) {
+        call.reject("Cannot remove an active download");
+        return;
+      }
+    }
+    DownloadTaskStore.remove(getContext(), id);
+    call.resolve();
+  }
+
+  @PluginMethod
+  public void open(PluginCall call) {
+    String raw = call.getString("uri");
+    if (raw == null || raw.isEmpty()) {
+      call.reject("uri is required");
+      return;
+    }
+    Uri uri = Uri.parse(raw);
+    String scheme = uri.getScheme();
+    if (!"content".equals(scheme) && !"file".equals(scheme)) {
+      call.reject("Not an openable file location");
+      return;
+    }
+    String mime = call.getString("mime");
+    if (mime == null || mime.isEmpty()) {
+      String lower = raw.toLowerCase(java.util.Locale.ROOT);
+      boolean image = lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+        || lower.endsWith(".webp") || lower.endsWith(".gif");
+      mime = image ? "image/*" : "video/mp4";
+    }
+    Intent intent = new Intent(Intent.ACTION_VIEW)
+      .setDataAndType(uri, mime)
+      .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+    try {
+      getContext().startActivity(intent);
+      call.resolve();
+    } catch (ActivityNotFoundException error) {
+      call.reject("No app available to open this file");
+    } catch (Exception error) {
+      call.reject(error.getMessage() != null ? error.getMessage() : "Could not open file");
+    }
   }
 
   @PluginMethod

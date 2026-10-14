@@ -40,6 +40,10 @@ interface MediaSaverPlugin {
   listTasks(): Promise<{ tasks: NativeDownloadTask[] }>
   cancelTask(options: { id: string }): Promise<void>
   retryTask(options: { id: string }): Promise<void>
+  /** Delete a finished task snapshot from the native store (rejects for active tasks). */
+  removeTask(options: { id: string }): Promise<void>
+  /** Fire an ACTION_VIEW intent for a content:// or file:// uri. */
+  open(options: { uri: string; mime?: string }): Promise<void>
   requestNotificationPermission(): Promise<void>
   addListener(
     event: 'taskChanged',
