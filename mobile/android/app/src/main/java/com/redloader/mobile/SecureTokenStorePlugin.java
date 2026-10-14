@@ -3,6 +3,7 @@ package com.redloader.mobile;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyPermanentlyInvalidatedException;
 import android.security.keystore.KeyProperties;
 import android.util.Base64;
 
@@ -14,7 +15,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.security.UnrecoverableKeyException;
 
+import javax.crypto.AEADBadTagException;
+import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
@@ -36,10 +40,25 @@ public class SecureTokenStorePlugin extends Plugin {
       if (encrypted != null && !encrypted.isEmpty()) result.put("value", decrypt(encrypted));
       call.resolve(result);
     } catch (Exception error) {
-      // A restored backup cannot be decrypted with a key from another device.
-      preferences().edit().remove(TOKEN).apply();
-      call.reject("Unable to decrypt the saved session", error);
+      if (isUnrecoverable(error)) {
+        // A restored backup cannot be decrypted with a key from another device.
+        preferences().edit().remove(TOKEN).apply();
+        call.reject("Unable to decrypt the saved session", error);
+      } else {
+        // Transient Keystore failures must not sign the user out; keep the token for a retry.
+        call.reject("Secure storage is temporarily unavailable", error);
+      }
     }
+  }
+
+  /** True only when the stored ciphertext can never be decrypted with the current key. */
+  private static boolean isUnrecoverable(Exception error) {
+    return error instanceof AEADBadTagException
+      || error instanceof BadPaddingException
+      || error instanceof UnrecoverableKeyException
+      || error instanceof KeyPermanentlyInvalidatedException
+      // Malformed stored value (missing separator / bad Base64).
+      || error instanceof IllegalArgumentException;
   }
 
   @PluginMethod
