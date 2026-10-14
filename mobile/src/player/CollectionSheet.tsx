@@ -16,14 +16,16 @@ const CACHE_KEY = 'collections'
 
 /**
  * Bottom-sheet add-to-collection picker. Opens instantly from the cached
- * collection list, then revalidates. Tapping a row toggles membership;
- * "New collection" creates a folder AND files the gif into it.
+ * collection list, then revalidates. Tapping a row toggles membership
+ * OPTIMISTICALLY: the row flips at once, the API call runs in the background,
+ * and a failure reverts it with a toast — the sheet never locks up waiting for
+ * a slow network. "New collection" creates a folder AND files the gif into it.
  */
 export default function CollectionSheet({ contentId, onClose }: CollectionSheetProps): React.JSX.Element {
   const notify = useToast()
   const [cols, setCols] = useState<Collection[] | null>(() => readCache<Collection[]>(CACHE_KEY))
   const [inIds, setInIds] = useState<Set<string>>(new Set())
-  const [busyId, setBusyId] = useState<string | null>(null)
+  const [busy, setBusy] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
@@ -56,9 +58,25 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentId])
 
-  // Re-read membership from sqlite (the source of truth) after every mutation
-  // instead of mutating a Set captured from the render closure — that avoids a
-  // stale-closure clobber if a create() resolves in between.
+  const setMember = (id: string, inside: boolean): void => {
+    setInIds((prev) => {
+      const next = new Set(prev)
+      if (inside) next.add(id)
+      else next.delete(id)
+      emitCollectChange(contentId, next.size > 0)
+      return next
+    })
+  }
+  const mark = (id: string, on: boolean): void => {
+    setBusy((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
+  // Re-read membership from sqlite (the source of truth) after a mutation.
   const syncMembership = async (): Promise<void> => {
     const ids = await storage.gifCollectionIds(contentId)
     setInIds(new Set(ids))
@@ -66,25 +84,27 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
   }
 
   const toggle = async (c: Collection): Promise<void> => {
-    if (busyId || saving) return
-    setBusyId(c.id)
+    if (busy.has(c.id)) return
     const inside = inIds.has(c.id)
+    const next = !inside
+    mark(c.id, true)
+    setMember(c.id, next) // optimistic
     try {
-      if (inside) {
-        await api.removeFromCollection(c.id, contentId)
-        await storage.removeGifMembership(contentId, 'collection', c.id)
-        await syncMembership()
-        notify('Removed from ' + c.name, 'success')
-      } else {
+      if (next) {
         await api.addToCollection(c.id, contentId)
         await storage.addGifMembership(contentId, 'collection', c.id)
-        await syncMembership()
-        notify('Added to ' + c.name, 'success')
+      } else {
+        await api.removeFromCollection(c.id, contentId)
+        await storage.removeGifMembership(contentId, 'collection', c.id)
       }
+      await syncMembership()
+      notify((next ? 'Added to ' : 'Removed from ') + c.name, 'success')
     } catch (e) {
-      notify('Failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
+      setMember(c.id, inside) // revert
+      void syncMembership().catch(() => undefined)
+      notify((next ? 'Add' : 'Remove') + ' failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     } finally {
-      setBusyId(null)
+      mark(c.id, false)
     }
   }
 
@@ -99,6 +119,7 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
       writeCache(CACHE_KEY, list)
       const made = list.find((c) => c.name === n)
       if (made) {
+        setMember(made.id, true)
         await api.addToCollection(made.id, contentId)
         await storage.addGifMembership(contentId, 'collection', made.id)
         await syncMembership()
@@ -109,6 +130,7 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
       setName('')
       setCreating(false)
     } catch (e) {
+      void syncMembership().catch(() => undefined)
       notify('Create failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     } finally {
       setSaving(false)
@@ -123,13 +145,22 @@ export default function CollectionSheet({ contentId, onClose }: CollectionSheetP
           <div className="loading">Loading…</div>
         ) : (
           <>
-            {cols.map((c) => (
-              <button key={c.id} className="sheet-row" disabled={busyId !== null || saving} onClick={() => void toggle(c)}>
-                <IconBookmark style={inIds.has(c.id) ? { color: 'var(--ember)' } : undefined} />
-                <span style={{ flex: 1 }}>{busyId === c.id ? '…' : c.name}</span>
-                {inIds.has(c.id) && <span className="pill pill-ok">in</span>}
-              </button>
-            ))}
+            {cols.map((c) => {
+              const inside = inIds.has(c.id)
+              const working = busy.has(c.id)
+              return (
+                <button
+                  key={c.id}
+                  className={`sheet-row ${inside ? 'on' : ''} ${working ? 'busy' : ''}`}
+                  aria-pressed={inside}
+                  onClick={() => void toggle(c)}
+                >
+                  <IconBookmark style={inside ? { color: 'var(--ember)', fill: 'var(--ember)' } : undefined} />
+                  <span style={{ flex: 1 }}>{c.name}</span>
+                  {inside && <span className="pill pill-ok">in</span>}
+                </button>
+              )
+            })}
             {creating ? (
               <div style={{ display: 'flex', gap: 8, padding: '10px 4px' }}>
                 <input
