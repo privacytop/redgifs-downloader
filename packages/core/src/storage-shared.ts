@@ -27,6 +27,8 @@ export const SCHEMA = `
     gif_id TEXT, source_type TEXT, source_id TEXT,
     UNIQUE(gif_id, source_type, source_id)
   );
+  CREATE INDEX IF NOT EXISTS idx_membership_source ON gif_membership(source_type, source_id);
+  CREATE INDEX IF NOT EXISTS idx_membership_gif ON gif_membership(gif_id);
 `
 
 /** Map a raw `downloads` row (snake_case columns) to a DownloadRecord. */

@@ -63,10 +63,40 @@ describe('indexLibrary', () => {
       getLikes: async (p: number) => page([gif(`like-${p}`)], p, 1)
     } as unknown as IndexApi
 
-    const final = await indexLibrary(api, storage, () => undefined)
+    const final = await indexLibrary(api, storage, () => undefined, { retryDelayMs: 0 })
 
     expect(cached).toEqual(['liked:like-1'])
     expect(final.gifsCached).toBe(1)
     expect(final.running).toBe(false)
+    // Retried, then reported — not silently swallowed.
+    expect(api.getCollectionContent).toHaveBeenCalledTimes(3)
+    expect(final.failed).toEqual(['Bad'])
+  })
+
+  it('retries a flaky page and keeps paging while pages are full even without `pages`', async () => {
+    const cached: string[] = []
+    const storage = {
+      cacheContents: (c: Content[]) => cached.push(...c.map((x) => x.id))
+    } as unknown as IndexStore
+    let calls = 0
+    const full = (p: number): ContentResponse => ({
+      contents: Array.from({ length: 80 }, (_, i) => gif(`c-${p}-${i}`)),
+      page: p,
+      pages: 0, // endpoint omits the page count
+      total: 0
+    })
+    const api = {
+      getCollections: async () => [{ id: 'c', name: 'C' }],
+      getCollectionContent: async (_id: string, p: number) => {
+        calls++
+        if (calls === 1) throw new Error('flaky')
+        return p < 3 ? full(p) : { contents: [gif('tail')], page: p, pages: 0, total: 0 }
+      },
+      getLikes: async () => ({ contents: [], page: 1, pages: 1, total: 0 })
+    } as unknown as IndexApi
+
+    const final = await indexLibrary(api, storage, () => undefined, { retryDelayMs: 0 })
+    expect(cached).toHaveLength(161)
+    expect(final.failed).toEqual([])
   })
 })

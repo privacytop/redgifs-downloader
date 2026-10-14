@@ -11,6 +11,31 @@ function expiryFromJwt(token: string): number {
 }
 
 const BASE = 'https://api.redgifs.com/v2'
+// A hung TCP/TLS connection must never block a feed forever.
+const REQUEST_TIMEOUT_MS = 20_000
+const MAX_ATTEMPTS = 4
+
+/** An HTTP failure with the server's own message/code preserved. `status` 0 = network. */
+export class ApiError extends Error {
+  status: number
+  code: string | undefined
+  path: string
+
+  constructor(status: number, path: string, message: string, code?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.path = path
+    this.code = code
+  }
+}
+
+function timeoutSignal(ms: number): AbortSignal | undefined {
+  const AS = (globalThis as { AbortSignal?: { timeout?: (ms: number) => AbortSignal } }).AbortSignal
+  return typeof AS?.timeout === 'function' ? AS.timeout(ms) : undefined
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 interface RawGif {
   id: string; createDate: number; hasAudio: boolean; width: number; height: number
@@ -40,6 +65,7 @@ export function toContentResponse(r: RawContentResponse): ContentResponse {
 export class RedgifsApi {
   private tempToken = ''
   private tempExpiry = 0
+  private tempTokenPromise: Promise<string> | null = null
   private userToken = ''
   private userExpiry = 0
   private rl = new RateLimiter(120)
@@ -66,13 +92,41 @@ export class RedgifsApi {
     return this.userToken !== '' && (this.userExpiry === 0 || Date.now() < this.userExpiry)
   }
 
-  private async token(): Promise<string> {
-    if (this.isAuthenticated()) return this.userToken
-    if (this.tempToken && Date.now() < this.tempExpiry) return this.tempToken
-    const data = await this.request<{ token: string }>('GET', '/auth/temporary', undefined, false)
-    this.tempToken = data.token
-    this.tempExpiry = Date.now() + 50 * 60 * 1000
-    return this.tempToken
+  // Anonymous token, fetched at most once at a time: on cold start every
+  // concurrent feed request used to hit /auth/temporary separately.
+  private token(): Promise<string> {
+    if (this.isAuthenticated()) return Promise.resolve(this.userToken)
+    if (this.tempToken && Date.now() < this.tempExpiry) return Promise.resolve(this.tempToken)
+    if (!this.tempTokenPromise) {
+      this.tempTokenPromise = this.request<{ token: string }>('GET', '/auth/temporary', undefined, false)
+        .then((data) => {
+          this.tempToken = data.token
+          const exp = expiryFromJwt(data.token)
+          this.tempExpiry = exp ? exp - 60_000 : Date.now() + 50 * 60 * 1000
+          return this.tempToken
+        })
+        .finally(() => {
+          this.tempTokenPromise = null
+        })
+    }
+    return this.tempTokenPromise
+  }
+
+  private async toError(resp: Response, path: string): Promise<ApiError> {
+    let message = ''
+    let code: string | undefined
+    try {
+      const text = typeof resp.text === 'function' ? await resp.text() : ''
+      if (text) {
+        const j = JSON.parse(text) as { error?: { message?: string; code?: string }; message?: string }
+        message = j?.error?.message ?? j?.message ?? ''
+        code = j?.error?.code
+      }
+    } catch {
+      /* non-JSON body */
+    }
+    if (resp.status === 404) return new ApiError(404, path, message || `not found: ${path}`, code)
+    return new ApiError(resp.status, path, message ? `${message} (HTTP ${resp.status})` : `HTTP ${resp.status} on ${path}`, code)
   }
 
   private async request<T>(method: string, path: string, params?: Record<string, string>, auth = true, body?: unknown): Promise<T> {
@@ -80,38 +134,61 @@ export class RedgifsApi {
     // API version than the v2 BASE) or a v2-relative path.
     const url = new URL(path.startsWith('http') ? path : BASE + path)
     if (params) for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
-    for (let attempt = 0; attempt <= 3; attempt++) {
+    let refreshed = false
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       await this.rl.wait()
       const headers: Record<string, string> = { Accept: 'application/json', 'User-Agent': 'RedGifs-Downloader/4.0' }
       if (auth) headers.Authorization = `Bearer ${await this.token()}`
-      const init: RequestInit = { method, headers }
+      const init: RequestInit = { method, headers, signal: timeoutSignal(REQUEST_TIMEOUT_MS) }
       if (body !== undefined) {
         headers['Content-Type'] = 'application/json'
         init.body = JSON.stringify(body)
       }
-      const resp = await fetch(url, init)
-      if (resp.status === 200) return (await resp.json()) as T
+      let resp: Response
+      try {
+        resp = await fetch(url, init)
+      } catch (e) {
+        // Network failure / timeout: brief pause, then retry; surface the last one.
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await sleep(400 * (attempt + 1))
+          continue
+        }
+        throw new ApiError(0, path, `Network error on ${path}: ${e instanceof Error ? e.message : String(e)}`)
+      }
+      if (resp.status === 200) {
+        this.rl.noteOk()
+        return (await resp.json()) as T
+      }
       // Mutation endpoints reply 201/202/204 with an empty (or ignorable) body.
-      if (resp.status === 201 || resp.status === 202 || resp.status === 204) return undefined as T
+      if (resp.status === 201 || resp.status === 202 || resp.status === 204) {
+        this.rl.noteOk()
+        return undefined as T
+      }
       if (resp.status === 429) {
-        const body = await resp.json().catch(() => ({})) as { error?: { delay?: number } }
-        this.rl.note429((body.error?.delay ?? 60) * 1000)
+        const retryAfter = Number(resp.headers?.get?.('retry-after') ?? 0)
+        const errBody = await resp.json().catch(() => ({})) as { error?: { delay?: number } }
+        const hinted = errBody.error?.delay ? errBody.error.delay * 1000 : retryAfter > 0 ? retryAfter * 1000 : undefined
+        this.rl.note429(hinted)
         continue
       }
       if (resp.status === 401 && auth) {
         // No user token: the anon temp token went stale — drop it and retry.
         if (!this.userToken) { this.tempToken = ''; continue }
-        // User token rejected: try a silent refresh once, then retry with it.
-        if (this.onAuthExpired && attempt < 3) {
-          const refreshed = await this.onAuthExpired()
-          if (refreshed) continue
+        // User token rejected: ONE silent refresh per request, then retry with it.
+        if (this.onAuthExpired && !refreshed) {
+          refreshed = true
+          if (await this.onAuthExpired()) continue
         }
-        throw new Error(`HTTP ${resp.status} on ${path}`)
+        throw await this.toError(resp, path)
       }
-      if (resp.status === 404) throw new Error(`not found: ${path}`)
-      throw new Error(`HTTP ${resp.status} on ${path}`)
+      // Transient upstream errors: retry briefly; everything else is final.
+      if ((resp.status === 502 || resp.status === 503 || resp.status === 504) && attempt < MAX_ATTEMPTS - 1) {
+        await sleep(600 * (attempt + 1))
+        continue
+      }
+      throw await this.toError(resp, path)
     }
-    throw new Error(`max retries exceeded on ${path}`)
+    throw new ApiError(429, path, `Too many requests — gave up on ${path}`, 'RateLimited')
   }
 
   async searchUsers(query: string): Promise<UserResult[]> {
@@ -209,10 +286,13 @@ export class RedgifsApi {
 
   // ---- search ----
 
+  /**
+   * `/gifs/search`. `order` ∈ top|top7|top28|latest|score|trending (probed
+   * live 2026-10; all of them page). Defaults to `latest`.
+   */
   async searchGifs(opts: { type?: 'g' | 'i'; order?: string; page?: number; verified?: boolean; tags?: string; search?: string }): Promise<ContentResponse> {
     const params: Record<string, string> = { count: '80' }
     if (opts.type) params.type = opts.type
-    // `trending` returns an empty (cursor-based) result set, so default to `latest`.
     params.order = opts.order ?? 'latest'
     if (opts.page) params.page = String(opts.page)
     if (opts.verified) params.verified = 'y'
@@ -268,21 +348,46 @@ export class RedgifsApi {
     return toContentResponse(await this.request<RawContentResponse>('GET', '/creators/search/previews', params))
   }
 
+  /**
+   * A creator's gifs. `order` ∈ trending|oldest|latest|top|top7|top28 (probed
+   * live; `best` is a legacy alias). `tags` is the server-side tag filter —
+   * space-separate several for AND semantics. (`search_text` does NOT filter
+   * this endpoint.)
+   */
   async getCreatorContent(username: string, opts: { type?: 'g' | 'i'; order?: string; page?: number; tags?: string }): Promise<ContentResponse> {
     const params: Record<string, string> = { count: '80' }
     if (opts.type) params.type = opts.type
     if (opts.order) params.order = opts.order
     if (opts.page) params.page = String(opts.page)
-    if (opts.tags) params.search_text = opts.tags
+    if (opts.tags) params.tags = opts.tags
     return toContentResponse(await this.request<RawContentResponse>('GET',
       `/users/${encodeURIComponent(username)}/search`, params))
   }
 
+  /**
+   * Tag names a creator uses, most-used first. The live response is
+   * `{ tags: { all: {Tag: count}, gifs: {...}, images: [] } }` — an object
+   * keyed by tag — but a bare array / `{tags: string[]}` is accepted too.
+   */
   async getCreatorTags(username: string): Promise<string[]> {
-    const data = await this.request<{ tags?: string[] } | string[]>('GET',
-      `/creators/${encodeURIComponent(username)}/tags`)
-    if (Array.isArray(data)) return data
-    return data?.tags ?? []
+    return (await this.getCreatorTagCounts(username)).map((t) => t.name)
+  }
+
+  async getCreatorTagCounts(username: string): Promise<Array<{ name: string; count: number }>> {
+    const data = await this.request<any>('GET', `/creators/${encodeURIComponent(username)}/tags`)
+    const raw = Array.isArray(data) ? data : data?.tags
+    const all = raw && !Array.isArray(raw) && typeof raw === 'object' && 'all' in raw ? raw.all : raw
+    if (Array.isArray(all)) {
+      return all
+        .map((t: unknown) => (typeof t === 'string' ? { name: t, count: 0 } : { name: String((t as any)?.name ?? ''), count: Number((t as any)?.count ?? 0) }))
+        .filter((t: { name: string }) => t.name)
+    }
+    if (all && typeof all === 'object') {
+      return Object.entries(all as Record<string, unknown>)
+        .map(([name, count]) => ({ name, count: Number(count) || 0 }))
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    }
+    return []
   }
 
   async getUser(username: string): Promise<UserProfile> {
@@ -338,10 +443,20 @@ export class RedgifsApi {
     return this.niches('GET', '/niches/following')
   }
 
-  /** Trending gif feed (the "Trending" tab). */
-  async getTrending(page: number): Promise<ContentResponse> {
+  /**
+   * Trending gif feed (the "Trending" tab). `/feeds/trending/popular` is a
+   * single curated page of 100 (page 2 → 400 BadPageNumber), so the endless
+   * feed is `/gifs/search?order=trending` (125 pages × 80). `order` may be any
+   * gifs/search order: top|top7|top28|latest|score|trending.
+   */
+  async getTrending(page: number, order = 'trending'): Promise<ContentResponse> {
+    return this.searchGifs({ order, page })
+  }
+
+  /** The curated top-100 (what redgifs.com shows under Trending). One page only. */
+  async getTrendingPopular(): Promise<ContentResponse> {
     return toContentResponse(await this.request<RawContentResponse>('GET', '/feeds/trending/popular',
-      { page: String(page), count: '100' }))
+      { page: '1', count: '100' }))
   }
   async getRelatedNiches(id: string): Promise<Niche[]> {
     return this.niches('GET', `/niches/${encodeURIComponent(id)}/related`)

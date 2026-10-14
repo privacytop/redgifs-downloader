@@ -61,6 +61,8 @@ export interface LibraryProgress {
   /** Human label for what's being indexed right now (collection name, etc.). */
   currentLabel: string
   running: boolean
+  /** Sources that could not be (fully) indexed after retries — e.g. collection names, 'Liked videos'. */
+  failed?: string[]
 }
 
 export interface UserResult {
