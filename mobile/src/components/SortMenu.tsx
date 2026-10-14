@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { SORTS, type SortKey } from '../lib/sort'
+import type { SortOption } from '../lib/sort'
+import { findSort } from '../lib/sort'
 import { IconChevronDown, IconCheck, IconSort } from './icons'
 
 interface SortMenuProps {
-  value: SortKey
-  onChange: (key: SortKey) => void
+  options: SortOption[]
+  value: string
+  onChange: (key: string) => void
   style?: React.CSSProperties
 }
 
@@ -12,13 +14,14 @@ interface SortMenuProps {
  * Custom sort dropdown — a design-system pill that opens an anchored, animated
  * popover of options (active one in ember with a check). Deliberately NOT a
  * native <select>: no ugly OS picker, and it matches the Midnight Press look.
+ * The option list is per feed (server orders vs. local sorts), see lib/sort.
  * Closes on outside pointer-down, Escape, or selection.
  */
-export default function SortMenu({ value, onChange, style }: SortMenuProps): React.JSX.Element {
+export default function SortMenu({ options, value, onChange, style }: SortMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const active = SORTS.find((s) => s.key === value) ?? SORTS[0]
-  const label = value === 'default' ? 'Sort' : active.label
+  const active = findSort(options, value)
+  const label = active.key === 'default' ? 'Sort' : active.label
 
   useEffect(() => {
     if (!open) return
@@ -36,7 +39,7 @@ export default function SortMenu({ value, onChange, style }: SortMenuProps): Rea
     }
   }, [open])
 
-  const pick = (key: SortKey): void => {
+  const pick = (key: string): void => {
     onChange(key)
     setOpen(false)
   }
@@ -57,17 +60,17 @@ export default function SortMenu({ value, onChange, style }: SortMenuProps): Rea
 
       {open && (
         <div className="sortmenu-pop" role="listbox">
-          {SORTS.map((s) => (
+          {options.map((s) => (
             <button
               key={s.key}
               type="button"
               role="option"
-              aria-selected={s.key === value}
-              className={`sortmenu-opt ${s.key === value ? 'on' : ''}`}
+              aria-selected={s.key === active.key}
+              className={`sortmenu-opt ${s.key === active.key ? 'on' : ''}`}
               onClick={() => pick(s.key)}
             >
               <span>{s.label}</span>
-              {s.key === value && <IconCheck />}
+              {s.key === active.key && <IconCheck />}
             </button>
           ))}
         </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../nav'
 import type { TagSuggestion, UserResult } from '@redloader/core'
 import { api } from '../lib/api'
 import { formatCount } from '../lib/format'
@@ -63,7 +63,8 @@ export default function SmartSearch(): React.JSX.Element {
         setCreators(users.status === 'fulfilled' ? users.value : [])
         setTags(suggested.status === 'fulfilled' ? suggested.value : [])
         setLoading(false)
-        setOpen(true)
+        // `open` is owned by focus/typing — a late result must not pop the
+        // list back open after the user blurred or pressed Escape.
       })
     }, DEBOUNCE_MS)
     return () => window.clearTimeout(timer)

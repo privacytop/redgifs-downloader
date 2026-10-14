@@ -1,33 +1,35 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from '../nav'
 import { api } from '../lib/api'
 import { usePagedFeed } from '../hooks/usePagedFeed'
 import Feed from '../components/Feed'
 import ScreenHeader from '../components/ScreenHeader'
 import { useToast } from '../context/toast'
 import { formatCount } from '../lib/format'
+import { TEXT_SEARCH_SORTS, findSort } from '../lib/sort'
 import type { Niche, UserResult } from '@redloader/core'
 import { CachedImage } from '../components/CachedMedia'
 
 /**
- * Search results for a query taken from the route (/search/:query). Three
- * sections stacked top to bottom: matching Creators, matching Niches, then a
- * paged Media grid wired to the swipe player. Creators/Niches only render when
- * they have hits; the media feed is the main event and always shown.
+ * Search results for a query (/search/:query). Three sections stacked top to
+ * bottom: matching Creators, matching Niches, then a paged Media grid wired to
+ * the swipe player. The media sort is a real server order (relevance by
+ * default, like the site).
  */
 export default function Search(): React.JSX.Element {
-  const params = useParams()
-  const query = decodeURIComponent(params.query ?? '')
+  const { query = '' } = useParams<{ query: string }>()
   const navigate = useNavigate()
   const notify = useToast()
 
   const [creators, setCreators] = useState<UserResult[]>([])
   const [niches, setNiches] = useState<Niche[]>([])
+  const [sort, setSort] = useState('score')
+  const order = findSort(TEXT_SEARCH_SORTS, sort).order ?? 'score'
 
   const feed = usePagedFeed(
-    (p) => api.searchGifs({ search: query, order: 'latest', page: p }),
-    [query],
-    `feed:search:${query}`
+    (p) => api.searchGifs({ search: query, order, page: p }),
+    [query, order],
+    `feed:search:${order}:${query}`
   )
 
   useEffect(() => {
@@ -35,18 +37,24 @@ export default function Search(): React.JSX.Element {
     setCreators([])
     setNiches([])
     if (!query) return
+    let warned = false
+    const warn = (e: unknown): void => {
+      if (!alive || warned) return
+      warned = true
+      notify('Some results couldn’t load: ' + (e instanceof Error ? e.message : String(e)), 'warning')
+    }
     api
       .searchUsers(query)
       .then((r) => {
         if (alive) setCreators(r.slice(0, 6))
       })
-      .catch((e) => notify(e instanceof Error ? e.message : String(e), 'error'))
+      .catch(warn)
     api
       .searchNiches(query)
       .then((r) => {
         if (alive) setNiches(r.slice(0, 6))
       })
-      .catch((e) => notify(e instanceof Error ? e.message : String(e), 'error'))
+      .catch(warn)
     return () => {
       alive = false
     }
@@ -110,12 +118,20 @@ export default function Search(): React.JSX.Element {
         </>
       )}
 
-      <div className="section-label">Media</div>
+      <div style={{ height: 22 }} />
       <Feed
         feed={feed}
         label={`"${query}"`}
         emptyMessage={`No results for “${query}”`}
         emptyHint="Try a different search term."
+        sorts={TEXT_SEARCH_SORTS}
+        sort={sort}
+        onSortChange={setSort}
+        toolbarLeft={
+          <div className="section-label" style={{ margin: 0 }}>
+            Media{feed.total ? ` · ${formatCount(feed.total)}` : ''}
+          </div>
+        }
       />
     </div>
   )

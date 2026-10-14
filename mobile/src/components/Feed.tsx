@@ -1,48 +1,71 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Content } from '@redloader/core'
 import type { PagedFeed } from '../hooks/usePagedFeed'
 import { usePlayer } from '../player/PlayerProvider'
-import { sortContents, type SortKey } from '../lib/sort'
+import { CLIENT_SORTS, findSort, sortContents, type SortOption } from '../lib/sort'
 import SortMenu from './SortMenu'
 import MediaGrid from './MediaGrid'
+import { formatCount } from '../lib/format'
 
 interface FeedProps {
   feed: PagedFeed
   label: string
   emptyMessage?: string
   emptyHint?: string
-  /** Controlled sort — pass with onSortChange to place the SortMenu yourself. */
-  sort?: SortKey
-  onSortChange?: (key: SortKey) => void
-  /** Suppress the built-in sort toolbar (when the screen renders SortMenu itself). */
+  /**
+   * The sort options this feed supports (server orders for API-sortable feeds,
+   * CLIENT_SORTS otherwise). Server orders are applied by the SCREEN (it puts
+   * the order into the fetcher + deps); Feed only renders the menu for them.
+   * Client sorts are applied here, after draining every page.
+   */
+  sorts?: SortOption[]
+  sort?: string
+  onSortChange?: (key: string) => void
+  /** Suppress the built-in toolbar (when the screen places the SortMenu itself). */
   hideToolbar?: boolean
+  /** Optional content on the left of the built-in toolbar. */
+  toolbarLeft?: ReactNode
 }
 
 /**
- * The shared feed body: a sort control + the grid + the swipe player, wired to
- * one paginator. Sort is client-side and carried into the player. By default
- * Feed owns the sort state and renders its own toolbar; a screen can instead
- * drive it (sort/onSortChange) and render the SortMenu elsewhere with
- * hideToolbar, e.g. inline on the header row.
+ * The shared feed body: sort control + grid + swipe player, wired to one
+ * paginator. With a client sort active it drains the whole feed first so the
+ * order is global, and shows progress while it does.
  */
 export default function Feed({
   feed,
   label,
   emptyMessage = 'Nothing here',
   emptyHint,
+  sorts = CLIENT_SORTS,
   sort: sortProp,
   onSortChange,
-  hideToolbar
+  hideToolbar,
+  toolbarLeft
 }: FeedProps): React.JSX.Element {
   const player = usePlayer()
-  const [innerSort, setInnerSort] = useState<SortKey>('default')
-  const sort = sortProp ?? innerSort
+  const [innerSort, setInnerSort] = useState<string>(sorts[0]?.key ?? 'default')
+  const sortKey = sortProp ?? innerSort
   const setSort = onSortChange ?? setInnerSort
-  const items = useMemo(() => sortContents(feed.items, sort), [feed.items, sort])
+  const active = findSort(sorts, sortKey)
+  const clientSort = active.client
 
-  const open = (_c: Content, index: number): void => {
-    player.open({ items, index, label, loadMore: feed.loadMoreItems })
-  }
+  const items = useMemo(() => sortContents(feed.items, clientSort), [feed.items, clientSort])
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+
+  // A client sort is only honest when it covers every page: drain on demand.
+  const { drain, hasMore, draining } = feed
+  useEffect(() => {
+    if (clientSort && hasMore && !draining) void drain()
+  }, [clientSort, hasMore, draining, drain])
+
+  const open = useCallback(
+    (_c: Content, index: number): void => {
+      player.open({ items: itemsRef.current, index, label, loadMore: feed.loadMoreItems })
+    },
+    [player, label, feed.loadMoreItems]
+  )
 
   if (feed.error && feed.items.length === 0) {
     return (
@@ -62,20 +85,31 @@ export default function Feed({
     )
   }
 
+  const drainNote =
+    clientSort && (draining || hasMore) ? (
+      <div className="feed-note" role="status">
+        Sorting everything · page {feed.page}/{Math.min(feed.pages, 40)}
+        {feed.total ? ` · ${formatCount(feed.total)} items` : ''}
+      </div>
+    ) : null
+
   return (
     <>
       {!hideToolbar && (
-        <div className="feed-toolbar">
-          <SortMenu value={sort} onChange={setSort} />
+        <div className={`feed-toolbar ${toolbarLeft ? 'with-left' : ''}`}>
+          {toolbarLeft}
+          <SortMenu options={sorts} value={active.key} onChange={setSort} />
         </div>
       )}
+      {drainNote}
       <MediaGrid
         items={items}
         onOpen={open}
         onEndReached={feed.loadMore}
         hasMore={feed.hasMore}
-        loading={feed.loading}
+        loading={feed.loading && !draining}
       />
+      {draining && <div className="loading">Loading all pages…</div>}
     </>
   )
 }

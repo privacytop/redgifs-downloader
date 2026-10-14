@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from '../nav'
 import { api } from '../lib/api'
 import { useCachedResource } from '../hooks/useCachedResource'
 import { usePagedFeed } from '../hooks/usePagedFeed'
@@ -7,7 +7,7 @@ import Feed from '../components/Feed'
 import ScreenHeader from '../components/ScreenHeader'
 import SortMenu from '../components/SortMenu'
 import { formatCount } from '../lib/format'
-import type { SortKey } from '../lib/sort'
+import { SEARCH_SORTS, findSort } from '../lib/sort'
 import type { Niche, UserResult } from '@redloader/core'
 import SmartSearch from '../components/SmartSearch'
 import { CachedImage } from '../components/CachedMedia'
@@ -16,10 +16,9 @@ const MAX_CREATORS = 12
 
 /**
  * Discover landing: a search box, a "Trending creators" list, a "Niches" chip
- * row, and a browsable "Fresh videos" gif feed (like the desktop Discover).
- * Creators and niches are each cached (stale-while-revalidate) so switching to
- * this tab paints instantly; tapping a creator or niche routes to its own paged
- * detail screen, and the gif feed opens into the swipe player.
+ * row, and a browsable gif feed (like the desktop Discover). Creators and
+ * niches are cached (stale-while-revalidate); the gif feed's sort is a real
+ * server order on /gifs/search.
  */
 export default function Discover(): React.JSX.Element {
   const navigate = useNavigate()
@@ -33,8 +32,9 @@ export default function Discover(): React.JSX.Element {
   const creators = creatorsRes.data ?? []
   const niches = nichesRes.data ?? []
 
-  const feed = usePagedFeed((p) => api.searchGifs({ order: 'latest', page: p }), [], 'feed:discover')
-  const [sort, setSort] = useState<SortKey>('default')
+  const [sort, setSort] = useState('latest')
+  const order = findSort(SEARCH_SORTS, sort).order ?? 'latest'
+  const feed = usePagedFeed((p) => api.searchGifs({ order, page: p }), [order], `feed:discover:${order}`)
 
   const openCreator = (username: string): void => {
     navigate(`/creator/${encodeURIComponent(username)}`)
@@ -124,10 +124,18 @@ export default function Discover(): React.JSX.Element {
       )}
 
       <div className="feed-head" style={{ margin: '22px 0 10px' }}>
-        <div className="section-label" style={{ margin: 0 }}>Fresh videos</div>
-        <SortMenu value={sort} onChange={setSort} />
+        <div className="section-label" style={{ margin: 0 }}>Videos</div>
+        <SortMenu options={SEARCH_SORTS} value={sort} onChange={setSort} />
       </div>
-      <Feed feed={feed} label="Discover" emptyMessage="Nothing to show" sort={sort} onSortChange={setSort} hideToolbar />
+      <Feed
+        feed={feed}
+        label="Discover"
+        emptyMessage="Nothing to show"
+        sorts={SEARCH_SORTS}
+        sort={sort}
+        onSortChange={setSort}
+        hideToolbar
+      />
     </div>
   )
 }

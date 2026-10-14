@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Preferences } from '@capacitor/preferences'
 import type { Quality } from '@redloader/core'
 import {
@@ -83,7 +83,9 @@ export function SettingsProvider({ children }: { children: ReactNode }): React.J
     const apply = ({ lowData }: { lowData: boolean }): void => {
       if (live) setLowDataMode(lowData)
     }
-    void DataMode.get().then(apply).catch(() => undefined)
+    // No plugin / no answer → not in Data Saver; otherwise "auto" would be
+    // stuck on SD forever (and swap the src of a playing clip when it resolved).
+    void DataMode.get().then(apply).catch(() => apply({ lowData: false }))
     void DataMode.addListener('change', apply).then((handle) => {
       if (!live) void handle.remove()
       else remove = handle.remove
@@ -94,7 +96,7 @@ export function SettingsProvider({ children }: { children: ReactNode }): React.J
     }
   }, [])
 
-  const set = <K extends keyof Settings>(key: K, value: Settings[K]): void => {
+  const set = useCallback(<K extends keyof Settings>(key: K, value: Settings[K]): void => {
     setSettings((prev) => {
       const next = {
         ...prev,
@@ -103,15 +105,16 @@ export function SettingsProvider({ children }: { children: ReactNode }): React.J
       void Preferences.set({ key: KEY, value: JSON.stringify(next) })
       return next
     })
-  }
+  }, [])
 
   const effectiveStreamQuality: Quality = resolveStreamQuality(settings.streamQuality, lowDataMode)
 
-  return (
-    <Ctx.Provider value={{ ...settings, ready, lowDataMode, effectiveStreamQuality, set }}>
-      {children}
-    </Ctx.Provider>
+  const value = useMemo<SettingsCtx>(
+    () => ({ ...settings, ready, lowDataMode, effectiveStreamQuality, set }),
+    [settings, ready, lowDataMode, effectiveStreamQuality, set]
   )
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
 export function useSettings(): SettingsCtx {

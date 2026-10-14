@@ -1,10 +1,11 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate } from '../nav'
 import { api } from '../lib/api'
 import { useAuth } from '../context/auth'
 import { useToast } from '../context/toast'
 import { useCachedResource } from '../hooks/useCachedResource'
 import { formatCount } from '../lib/format'
+import { setBlockedTags } from '../lib/blockedTags'
 import type { UserProfile } from '@redloader/core'
 import { IconGear, IconUser } from '../components/icons'
 import ScreenHeader from '../components/ScreenHeader'
@@ -23,7 +24,9 @@ export default function You(): React.JSX.Element {
     loading,
     refresh
   } = useCachedResource<UserProfile | null>(
-    'me:profile',
+    // Keyed by account so a re-login as someone else never paints the previous
+    // avatar/stats while the fetch is in flight.
+    `me:profile:${username ?? 'anon'}`,
     () => (authenticated ? api.getProfile() : Promise.resolve(null)),
     [authenticated]
   )
@@ -142,27 +145,44 @@ function Stat({ n, label }: { n: number; label: string }): React.JSX.Element {
   )
 }
 
-/** Blocked tags — view, add, remove (mirrors desktop Account). */
+/**
+ * Blocked tags — view, add, remove (mirrors desktop Account). Edits are
+ * optimistic: the chip list and the app-wide block set change at once (every
+ * feed re-filters immediately); a failed save reverts both with a toast.
+ */
 function BlockedTags({ profile, onChanged }: { profile: UserProfile; onChanged: () => void }): React.JSX.Element {
   const notify = useToast()
   const [tag, setTag] = useState('')
-  const [saving, setSaving] = useState(false)
-  const blocked = profile.blockedTags
+  const [blocked, setBlocked] = useState<string[]>(profile.blockedTags)
+  const [pending, setPending] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    setBlocked(profile.blockedTags)
+    setBlockedTags(profile.blockedTags)
+  }, [profile.blockedTags])
 
   // RedGifs JSON-patch "add" replaces the whole array, so send the full list.
-  const save = async (next: string[]): Promise<void> => {
-    setSaving(true)
+  const save = async (next: string[], touched: string): Promise<void> => {
+    const prev = blocked
+    setBlocked(next)
+    setBlockedTags(next)
+    setPending((p) => new Set(p).add(touched))
     try {
       await api.updatePreferences([
         { op: 'add', path: '/preferences', value: profile.preferences },
         { op: 'add', path: '/blocked_tags', value: next }
       ])
-      notify('Updated blocked tags', 'success')
       onChanged()
     } catch (e) {
+      setBlocked(prev)
+      setBlockedTags(prev)
       notify('Update failed: ' + (e instanceof Error ? e.message : String(e)), 'error')
     } finally {
-      setSaving(false)
+      setPending((p) => {
+        const s = new Set(p)
+        s.delete(touched)
+        return s
+      })
     }
   }
 
@@ -173,7 +193,7 @@ function BlockedTags({ profile, onChanged }: { profile: UserProfile; onChanged: 
       return
     }
     setTag('')
-    void save([...blocked, t])
+    void save([...blocked, t], t)
   }
 
   return (
@@ -185,8 +205,8 @@ function BlockedTags({ profile, onChanged }: { profile: UserProfile; onChanged: 
           <button
             key={t}
             className="chip"
-            disabled={saving}
-            onClick={() => void save(blocked.filter((x) => x !== t))}
+            style={pending.has(t) ? { opacity: 0.5 } : undefined}
+            onClick={() => void save(blocked.filter((x) => x !== t), t)}
             title="Remove"
           >
             {t} ✕
@@ -203,7 +223,7 @@ function BlockedTags({ profile, onChanged }: { profile: UserProfile; onChanged: 
             if (e.key === 'Enter') add()
           }}
         />
-        <button className="btn btn-ember btn-sm" disabled={saving || !tag.trim()} onClick={add}>
+        <button className="btn btn-ember btn-sm" disabled={!tag.trim()} onClick={add}>
           Block
         </button>
       </div>

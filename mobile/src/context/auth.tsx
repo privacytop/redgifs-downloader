@@ -6,6 +6,10 @@ import { SecureTokenStore } from '../plugins/secureTokenStore'
 import { api } from '../lib/api'
 import { resetLikes } from '../lib/likes'
 import { resetFollows } from '../lib/follows'
+import { clearBlockedTags, loadBlockedTags } from '../lib/blockedTags'
+import { clearUserCaches, readCache, writeCache } from '../lib/cache'
+import { clearSessionFeeds } from '../hooks/usePagedFeed'
+import { storage } from '../lib/storage'
 import { useToast } from './toast'
 
 const TOKEN_KEY = 'redgifs_user_token'
@@ -68,7 +72,18 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
 
   const apply = useCallback((token: string): void => {
     api.setUserToken(token)
-    setUsername(usernameFromToken(token))
+    const name = usernameFromToken(token)
+    setUsername(name)
+    // Account hygiene: a DIFFERENT account than the one that built the offline
+    // index must not inherit its collections/likes — drop the index + caches.
+    const owner = readCache<string>('library:owner')
+    if (name && owner && owner.toLowerCase() !== name.toLowerCase()) {
+      clearUserCaches()
+      clearSessionFeeds()
+      void storage.clearIndex().catch(() => undefined)
+    }
+    if (name) writeCache('library:owner', name)
+    void loadBlockedTags()
   }, [])
 
   const scheduleRefresh = useCallback((token: string): void => {
@@ -158,6 +173,12 @@ export function AuthProvider({ children }: { children: ReactNode }): React.JSX.E
     setUsername(null)
     resetLikes()
     resetFollows()
+    clearBlockedTags()
+    // In-memory feed snapshots and the user-scoped SWR caches belong to the
+    // account that just left. (The sqlite index is kept for a same-account
+    // re-login; `apply` drops it if a different account signs in.)
+    clearSessionFeeds()
+    clearUserCaches()
     await Promise.allSettled([AuthCapture.logout(), removeStoredToken()])
   }
 
